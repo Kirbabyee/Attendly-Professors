@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import 'class_item.dart';
 import 'dashboard.dart';
 
 class Archives extends StatefulWidget {

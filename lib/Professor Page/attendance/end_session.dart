@@ -6,7 +6,12 @@ import 'package:flutter/material.dart';
 import '../../widgets/class_session.dart';
 
 class EndSession extends StatefulWidget {
-  const EndSession({super.key});
+  final List<String> students;
+
+  const EndSession({
+    super.key,
+    required this.students,
+  });
 
   @override
   State<EndSession> createState() => _EndSessionState();
@@ -15,17 +20,62 @@ class EndSession extends StatefulWidget {
 class _EndSessionState extends State<EndSession> {
   bool viewAllList = false;
 
-  List Students = [
-    'John Doe',
-    'Nicole Margarette',
-    'Trisha Lorraine',
-    'Arthur Morgan',
-    'Clark Kent',
-    'Lex Luthor',
-    'Lois Lane',
-    'Lana Lang',
-    'Tony Stark',
-  ];
+  Future<void> _confirmEndSession() async {
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          title: const Text(
+            'Are you sure?',
+            textAlign: TextAlign.center,
+          ),
+          content: const Text(
+            'This will end the current class session.',
+            textAlign: TextAlign.center,
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadiusGeometry.circular(8)
+                )
+              ),
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(
+                  color: Colors.black
+                ),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFB60202),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadiusGeometry.circular(8)
+                )
+              ),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text(
+               'End Session',
+                style: TextStyle(
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm == true) {
+      Navigator.pop(context, 'ended'); // ✅ return result to Dashboard
+    }
+  }
 
   Widget student(String studentName) {
     return Column(
@@ -33,16 +83,31 @@ class _EndSessionState extends State<EndSession> {
         Container(
           margin: EdgeInsets.symmetric(horizontal: 20),
           child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Image.asset(
-                  width: 20,
-                  'assets/avatar.png'
+              Container(
+                child: Row(
+                  children: [
+                    Image.asset(
+                        width: 20,
+                        'assets/avatar.png'
+                    ),
+                    SizedBox(width: 10,),
+                    Text(
+                      studentName,
+                      style: TextStyle(
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              SizedBox(width: 10,),
-              Text(
-                studentName,
-                style: TextStyle(
-                  fontSize: 12,
+              Container(
+                child: Row(
+                  children: [
+                    Icon(CupertinoIcons.check_mark_circled, color: Color(0xFF018832), size: 15,),
+                    Text('Present', style: TextStyle(color: Color(0xFF018832), fontSize: 12),)
+                  ],
                 ),
               )
             ],
@@ -94,7 +159,7 @@ class _EndSessionState extends State<EndSession> {
                   ),
                   const SizedBox(height: 10),
 
-                  // Start Session
+                  // End Session
                   Container(
                     padding: EdgeInsets.all(20),
                     width: 350,
@@ -120,6 +185,31 @@ class _EndSessionState extends State<EndSession> {
                           ),
                         ),
                         SizedBox(height: 10,),
+                        Container(
+                          padding: EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Color(0x509BC9F5),
+                            borderRadius: BorderRadiusGeometry.circular(8)
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                CupertinoIcons.clock,
+                                size: 20,
+                                color: Color(0xFF043B6F)
+                              ),
+                              SizedBox(width: 5,),
+                              Text(
+                                'Session Started at 5:58 PM',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Color(0xFF043B6F)
+                                ),
+                              )
+                            ],
+                          ),
+                        ),
+                        SizedBox(height: 10,),
                         Center(
                           child: OutlinedButton.icon(
                               style: OutlinedButton.styleFrom(
@@ -129,11 +219,7 @@ class _EndSessionState extends State<EndSession> {
                                       borderRadius: BorderRadiusGeometry.circular(8)
                                   )
                               ),
-                              onPressed: () {},
-                              icon: Icon(
-                                CupertinoIcons.stop,
-                                color: Colors.white,
-                              ),
+                              onPressed: _confirmEndSession,
                               label: Text(
                                 'End Class Session',
                                 style: TextStyle(
@@ -145,65 +231,158 @@ class _EndSessionState extends State<EndSession> {
                     ),
                   ),
 
-                  SizedBox(height: 30,),
+                  SizedBox(height: 20,),
 
-                  // Student in the class
+                  // Attendance
                   Container(
                     width: 350,
-                    padding: EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Colors.black26,
-                          blurRadius: 2,
-                          offset: Offset(0, 4),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Container(
+                          width: 100,
+                          height: 100,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadiusGeometry.circular(8),
+                            color: Colors.white,
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black26,
+                                blurRadius: 2,
+                                offset: Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                '4',
+                                style: TextStyle(
+                                  fontSize: 30
+                                ),
+                              ),
+                              Text(
+                                'Present',
+                                style: TextStyle(
+                                  fontSize: 12
+                                ),
+                              )
+                            ],
+                          ),
+                        ),
+                        Container(
+                          width: 100,
+                          height: 100,
+                          padding: EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadiusGeometry.circular(8),
+                            color: Colors.white,
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black26,
+                                blurRadius: 2,
+                                offset: Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                '39',
+                                style: TextStyle(
+                                    fontSize: 30
+                                ),
+                              ),
+                              Text(
+                                'Pending',
+                                style: TextStyle(
+                                    fontSize: 12
+                                ),
+                              )
+                            ],
+                          ),
+                        ),
+                        Container(
+                          width: 100,
+                          height: 100,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadiusGeometry.circular(8),
+                            color: Colors.white,
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black26,
+                                blurRadius: 2,
+                                offset: Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                '43',
+                                style: TextStyle(
+                                    fontSize: 30
+                                ),
+                              ),
+                              Text(
+                                'Total',
+                                style: TextStyle(
+                                    fontSize: 12
+                                ),
+                              )
+                            ],
+                          ),
                         ),
                       ],
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Students',
-                          style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold
-                          ),
-                        ),
-                        SizedBox(height: 10,),
-                        !viewAllList
-                            ? Container(
-                          child: Column(
-                            children: Students.take(4).map((stud) => student(stud)).toList(),
-                          ),
-                        )
-                            : SizedBox(
-                          height: 180,
-                          child: ListView.builder(
-                            itemCount: Students.length,
-                            itemBuilder: (context, index) {
-                              return student(Students[index]);
-                            },
-                          ),
-                        ),
+                  ),
 
-                        Center(
-                          child: TextButton(
-                            onPressed: () {
-                              setState(() {
-                                viewAllList = !viewAllList;
-                              });
-                            },
-                            child: Text(
-                              !viewAllList ? 'View all students' : 'Show less',
-                              style: TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF105698)
-                              ),
-                            ),
+                  SizedBox(height: 20,),
+
+                  // Attendance Log
+                  Container(
+                    width: 350,
+                    padding: EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadiusGeometry.circular(8)
+                    ),
+                    child: Column(
+                      children: [
+                        Container(
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('Attendance Log'),
+                              Container(
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.people_alt_outlined),
+                                    Text('${widget.students.length}/39'),
+                                  ],
+                                ),
+                              )
+                            ],
                           ),
-                        )
+                        ),
+                        Divider(
+                          color: Colors.black,
+                        ),
+                        SizedBox(
+                          height: 100,
+                          child: ListView.builder(
+                            itemCount: widget.students.length,
+                            itemBuilder: (context, index) {
+                              return student(widget.students[index]);
+                            },
+                          ),
+                        ),
                       ],
                     ),
                   )

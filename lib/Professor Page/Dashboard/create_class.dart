@@ -1,6 +1,8 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import 'class_item.dart';
+
 class CreateClassSheet extends StatefulWidget {
   const CreateClassSheet({super.key});
 
@@ -12,6 +14,7 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
   final _formKey = GlobalKey<FormState>();
 
   final _className = TextEditingController();
+  final _classCode = TextEditingController();
   final _course = TextEditingController();
   final _day = TextEditingController();
   final _room = TextEditingController();
@@ -25,11 +28,13 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
   @override
   void dispose() {
     _className.dispose();
+    _classCode.dispose();
     _course.dispose();
     _day.dispose();
     _room.dispose();
     super.dispose();
   }
+
 
   InputDecoration _input(String hint) {
     return InputDecoration(
@@ -217,6 +222,15 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
                   ),
                   const SizedBox(height: 14),
 
+                  // Class code
+                  _label('Class Code'),
+                  TextFormField(
+                    controller: _classCode,
+                    decoration: _input('Enter Class Code'),
+                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+                  ),
+                  const SizedBox(height: 14),
+
                   // Course
                   _label('Course'),
                   TextFormField(
@@ -285,7 +299,20 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
                           if (!_formKey.currentState!.validate()) return;
 
                           // Close the Create Class modal first
-                          Navigator.pop(context);
+                          Navigator.pop(
+                            context,
+                            ClassItem(
+                              course: _course.text.trim(),
+                              classCode: _classCode.text.trim(),
+                              professor: 'Mr. Leviticio Dowell', // or from your user/profile
+                              room: _room.text.trim(),
+                              sched: '${_day.text.trim()}: '
+                                  '${_formatTime(_startHour, _startMinute, _startIsAm)} - '
+                                  '${_formatTime(_endHour, _endMinute, _endIsAm)}',
+                              session: 'Upcoming', // default for newly created
+                            ),
+                          );
+
 
                           // Show success dialog after closing
                           Future.microtask(() {

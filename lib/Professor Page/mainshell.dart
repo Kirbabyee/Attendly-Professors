@@ -22,7 +22,7 @@ class _MainshellState extends State<Mainshell> {
   late int _index; // Home selected by default (match your navbar order)
 
   final List<Widget> _pages = const [
-    Dashboard(),
+    Dashboard(unRead: true),
     History(),
     Settings()
   ];

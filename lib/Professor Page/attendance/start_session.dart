@@ -6,11 +6,17 @@ import 'package:flutter/material.dart';
 import '../../widgets/class_session.dart';
 
 class StartSession extends StatefulWidget {
-  const StartSession({super.key});
+  final List<String> students;
+
+  const StartSession({
+    super.key,
+    required this.students,
+  });
 
   @override
   State<StartSession> createState() => _StartSessionState();
 }
+
 
 class _StartSessionState extends State<StartSession> {
   bool viewAllList = false;
@@ -129,7 +135,9 @@ class _StartSessionState extends State<StartSession> {
                                       borderRadius: BorderRadiusGeometry.circular(8)
                                   )
                               ),
-                              onPressed: () {},
+                              onPressed: () {
+                                Navigator.pop(context, 'started'); // Tell Dashboard session has started
+                              },
                               icon: Icon(
                                 CupertinoIcons.play,
                                 color: Colors.white,
@@ -175,15 +183,16 @@ class _StartSessionState extends State<StartSession> {
                         !viewAllList
                             ? Container(
                           child: Column(
-                            children: Students.take(4).map((stud) => student(stud)).toList(),
+                            children: widget.students.take(4)
+                                      .map((stud) => student(stud)).toList(),
                           ),
                         )
                             : SizedBox(
                           height: 180,
                           child: ListView.builder(
-                            itemCount: Students.length,
+                            itemCount: widget.students.length,
                             itemBuilder: (context, index) {
-                              return student(Students[index]);
+                              return student(widget.students[index]);
                             },
                           ),
                         ),

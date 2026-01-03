@@ -3,35 +3,38 @@ import 'package:flutter/material.dart';
 import 'package:professor/Professor%20Page/attendance/class_session.dart';
 
 import 'archives.dart';
+import 'class_item.dart';
 import 'create_class.dart';
+import 'notification_ui.dart';
 
 class Dashboard extends StatefulWidget {
-  const Dashboard({super.key});
+  final bool unRead;
 
+  const Dashboard({
+    super.key,
+    required this.unRead
+  });
   @override
   State<Dashboard> createState() => _DashboardState();
 }
 
-class ClassItem {
-  final String course;
-  final String classCode;
-  final String professor;
-  final String room;
-  final String sched;
-  final String session;
 
-  ClassItem({
-    required this.course,
-    required this.classCode,
-    required this.professor,
-    required this.room,
-    required this.sched,
-    required this.session,
-  });
-}
 
 
 class _DashboardState extends State<Dashboard> {
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
+  final students = <String>[
+    'John Doe',
+    'Nicole Margarette',
+    'Trisha Lorraine',
+    'Arthur Morgan',
+    'Clark Kent',
+    'Lex Luthor',
+    'Lois Lane',
+    'Lana Lang',
+    'Tony Stark',
+  ];
 
   final List<ClassItem> _classes = [
     ClassItem(
@@ -39,28 +42,30 @@ class _DashboardState extends State<Dashboard> {
       classCode: 'CCS101',
       professor: 'Mr. Leviticio Dowell',
       room: 'Room 301',
-      sched: 'Monday: 9:00 - 11:00 AM',
-      session: 'Session Started',
+      sched: 'Monday: 9:00 AM - 11:00 AM',
+      session: 'Pending',
     ),
     ClassItem(
       course: 'Information Assurance and Security 2',
       classCode: 'IT 108',
       professor: 'Mr. Leviticio Dowell',
       room: 'Room 303',
-      sched: 'Thursday: 4:30 - 7:30 PM',
+      sched: 'Thursday: 4:30 PM - 7:30 PM',
       session: 'Upcoming',
     ),
     ClassItem(
       course: 'Software Engineering 1',
-      classCode: 'IT 10',
+      classCode: 'IT 101',
       professor: 'Mr. Leviticio Dowell',
       room: 'Room 301',
-      sched: 'Wednesday: 2:00 - 5:00 PM',
+      sched: 'Wednesday: 2:00 PM - 5:00 PM',
       session: 'Upcoming',
     ),
   ];
 
   final List<ClassItem> _archivedClasses = [];
+
+  late bool unRead;
 
   void _sortClasses() {
     const priority = {
@@ -79,6 +84,8 @@ class _DashboardState extends State<Dashboard> {
   @override
   void initState() {
     super.initState();
+    _sortClasses();
+    unRead = widget.unRead; // ✅ start from passed value
     _sortClasses();
   }
 
@@ -151,13 +158,51 @@ class _DashboardState extends State<Dashboard> {
                 ),
                 session == 'Pending' || session == 'Session Started'
                     ? IconButton(
-                  onPressed: () {
-                    Navigator.push(
+                  onPressed: () async {
+                    final result = await Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => ClassSession(session: session),
+                        builder: (_) => ClassSession(
+                          session: session,
+                          students: students,
+                        ),
                       ),
                     );
+
+                    if (result == 'ended') {
+                      setState(() {
+                        final idx = _classes.indexWhere((c) => c.classCode == classCode);
+                        if (idx != -1) {
+                          final old = _classes[idx];
+                          _classes[idx] = ClassItem(
+                            course: old.course,
+                            classCode: old.classCode,
+                            professor: old.professor,
+                            room: old.room,
+                            sched: old.sched,
+                            session: 'Upcoming', // ✅ change status
+                          );
+                          _sortClasses();
+                        }
+                      });
+                    }
+                    else if(result == 'started') {
+                      setState(() {
+                        final idx = _classes.indexWhere((c) => c.classCode == classCode);
+                        if (idx != -1) {
+                          final old = _classes[idx];
+                          _classes[idx] = ClassItem(
+                            course: old.course,
+                            classCode: old.classCode,
+                            professor: old.professor,
+                            room: old.room,
+                            sched: old.sched,
+                            session: 'Session Started', // ✅ change status
+                          );
+                          _sortClasses();
+                        }
+                      });
+                    }
                   },
                   icon: Icon(CupertinoIcons.right_chevron, size: screenHeight > 700 ? 16 : 14),
                 )
@@ -261,6 +306,13 @@ class _DashboardState extends State<Dashboard> {
     final screenWidth = MediaQuery.of(context).size.width;
     print(screenWidth);
     return Scaffold(
+      key: _scaffoldKey,
+      endDrawer: NotificationsDrawer(
+        unRead: unRead,
+        onUnreadChanged: (value) {
+          setState(() => unRead = value); // ✅ update Dashboard badge immediately
+        },
+      ),
       body: SafeArea(
         child: Column(
           children: [
@@ -277,13 +329,34 @@ class _DashboardState extends State<Dashboard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
+                  // Notification Bell
                   Container(
                     margin: EdgeInsets.fromLTRB(0,0,15,0),
-                    child: IconButton(
-                      onPressed: () {},
-                      icon: Icon(CupertinoIcons.bell),
-                      color: Colors.white,
-                    ),
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        IconButton(
+                          onPressed: () {
+                            _scaffoldKey.currentState?.openEndDrawer();
+                          },
+                          icon: const Icon(CupertinoIcons.bell),
+                          color: Colors.white,
+                        ),
+                        if (unRead)
+                          Positioned(
+                            right: 10,
+                            top: 10,
+                            child: Container(
+                              width: 10,
+                              height: 10,
+                              decoration: const BoxDecoration(
+                                color: Colors.red,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                      ],
+                    )
                   ),
                   Container(
                     margin: EdgeInsets.symmetric(horizontal: 20),
@@ -316,17 +389,24 @@ class _DashboardState extends State<Dashboard> {
                             borderRadius: BorderRadiusGeometry.circular(8)
                           ),
                           child: IconButton(
-                            onPressed: () {
-                              showModalBottomSheet(
+                            onPressed: () async {
+                              final newClass = await showModalBottomSheet<ClassItem>(
                                 context: context,
                                 isScrollControlled: true,
                                 backgroundColor: Colors.transparent,
                                 builder: (_) => const CreateClassSheet(),
                               );
+
+                              if (newClass != null) {
+                                setState(() {
+                                  _classes.add(newClass);
+                                  _sortClasses();
+                                });
+                              }
                             },
                             icon: Icon(
-                              CupertinoIcons.plus,
-                              size: 30,
+                            CupertinoIcons.plus,
+                            size: 30,
                             )
                           ),
                         ),
