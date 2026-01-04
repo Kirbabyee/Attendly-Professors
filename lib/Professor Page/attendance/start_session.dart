@@ -59,6 +59,69 @@ class _StartSessionState extends State<StartSession> {
     );
   }
 
+  bool _starting = false;
+
+  Future<void> _confirmStartSession() async { // Start session confirmation
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          title: const Text(
+            'Are you sure?',
+            textAlign: TextAlign.center,
+          ),
+          content: const Text(
+            'This will start the class session.',
+            textAlign: TextAlign.center,
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: Colors.black),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF018832),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text(
+                'Start Session',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm == true) {
+      if (_starting) return;
+      setState(() => _starting = true);
+
+      await Future.delayed(const Duration(milliseconds: 700));
+
+      if (!mounted) return;
+      Navigator.pop(context, 'started');
+    }
+  }
+
+
+
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.width;
@@ -73,7 +136,7 @@ class _StartSessionState extends State<StartSession> {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   AttendlyBlueHeader(
-                    onBack: true,
+                    onBack: false,
                     courseTitle: 'Introduction to Human Computer Interaction',
                     courseCode: 'CCS101',
                     professor: 'Mr. Leviticio Dowell',
@@ -127,27 +190,42 @@ class _StartSessionState extends State<StartSession> {
                         ),
                         SizedBox(height: 10,),
                         Center(
-                          child: OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(
-                                  backgroundColor: Color(0xFF018832),
-                                  side: BorderSide.none,
-                                  shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadiusGeometry.circular(8)
-                                  )
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              backgroundColor: const Color(0xFF018832),
+                              side: BorderSide.none,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
                               ),
-                              onPressed: () {
-                                Navigator.pop(context, 'started'); // Tell Dashboard session has started
-                              },
-                              icon: Icon(
-                                CupertinoIcons.play,
-                                color: Colors.white,
+                            ),
+                            onPressed: _starting ? null : _confirmStartSession,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (_starting) ...[
+                                    const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                  ] else ...[
+                                    const Icon(CupertinoIcons.play, color: Colors.white),
+                                    const SizedBox(width: 10),
+                                  ],
+                                  Text(
+                                    _starting ? 'Starting...' : 'Start Class Session',
+                                    style: const TextStyle(color: Colors.white),
+                                  ),
+                                ],
                               ),
-                              label: Text(
-                                'Start Class Session',
-                                style: TextStyle(
-                                    color: Colors.white
-                                ),
-                              )),
+                            ),
+                          ),
                         )
                       ],
                     ),
@@ -161,6 +239,7 @@ class _StartSessionState extends State<StartSession> {
                     padding: EdgeInsets.all(20),
                     decoration: BoxDecoration(
                       color: Colors.white,
+                      borderRadius: BorderRadiusGeometry.circular(8),
                       boxShadow: const [
                         BoxShadow(
                           color: Colors.black26,
@@ -172,11 +251,25 @@ class _StartSessionState extends State<StartSession> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Students',
-                          style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold
+                        Container(
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Students',
+                                style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold
+                                ),
+                              ),
+                              Text(
+                                '${widget.students.length} students',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold
+                                ),
+                              )
+                            ],
                           ),
                         ),
                         SizedBox(height: 10,),
@@ -188,7 +281,7 @@ class _StartSessionState extends State<StartSession> {
                           ),
                         )
                             : SizedBox(
-                          height: 180,
+                          height: 170,
                           child: ListView.builder(
                             itemCount: widget.students.length,
                             itemBuilder: (context, index) {

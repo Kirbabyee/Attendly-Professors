@@ -1,7 +1,11 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
+
 import '../mainshell.dart';
+import 'change_email.dart';
 
 class AccountInformation extends StatefulWidget {
   const AccountInformation({super.key});
@@ -11,6 +15,44 @@ class AccountInformation extends StatefulWidget {
 }
 
 class _AccountInformationState extends State<AccountInformation> {
+  final ImagePicker _picker = ImagePicker();
+  File? _profileImage;
+
+  Future<void> _pickImage() async {
+    final XFile? image = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 80, // optional compression
+    );
+
+    if (image == null) return;
+
+    setState(() {
+      _profileImage = File(image.path);
+    });
+  }
+
+  String maskEmail(String email, {int keepStart = 3, int keepEnd = 2}) { // emailk masking
+    email = email.trim();
+    final atIndex = email.indexOf('@');
+    if (atIndex == -1) return email; // not a valid email format
+
+    final local = email.substring(0, atIndex);      // before @
+    final domain = email.substring(atIndex + 1);    // after @
+
+    if (local.length <= keepStart + keepEnd) {
+      // Too short to mask nicely
+      return '${local[0]}***@$domain';
+    }
+
+    final start = local.substring(0, keepStart);
+    final end = local.substring(local.length - keepEnd);
+
+    final stars = '*' * (local.length - keepStart - keepEnd);
+
+    return '$start$stars$end@$domain';
+  }
+
+
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.width;
@@ -121,9 +163,15 @@ class _AccountInformationState extends State<AccountInformation> {
                     child: Container(
                       child: Column(
                         children: [
-                          Image.asset(
-                            'assets/avatar.png',
+                          SizedBox(
                             width: 180,
+                            height: 180,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(90),
+                              child: _profileImage == null
+                                  ? Image.asset('assets/avatar.png', fit: BoxFit.cover)
+                                  : Image.file(_profileImage!, fit: BoxFit.cover),
+                            ),
                           ),
                           SizedBox(height: 20,),
                           OutlinedButton.icon(
@@ -138,7 +186,7 @@ class _AccountInformationState extends State<AccountInformation> {
                               Icons.upload,
                               color: Colors.white,
                             ),
-                            onPressed: () {},
+                            onPressed: _pickImage,
                             label: Text(
                               'Upload',
                               style: TextStyle(
@@ -199,21 +247,33 @@ class _AccountInformationState extends State<AccountInformation> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(
+                              const Text(
                                 'Email:',
-                                style: TextStyle(
-                                  fontSize: 12,
+                                style: TextStyle(fontSize: 12),
+                              ),
+                              InkWell(
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => const ChangeEmail(), // 👈 your change email page
+                                    ),
+                                  );
+                                },
+                                child: Text(
+                                  maskEmail('LeviticioDowell@gmail.com'),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF105698), // link blue
+                                    decoration: TextDecoration.underline, // hyperlink look
+                                    decorationColor: Color(0xFF105698)
+                                  ),
                                 ),
                               ),
-                              Text(
-                                'Lev************ll.com',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold
-                                ),
-                              )
                             ],
                           ),
+
                         ],
                       ),
                     ),

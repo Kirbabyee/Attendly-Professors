@@ -248,10 +248,9 @@ class _LoginState extends State<Login> {
                             ),
                           ),
                           Container(
-                            height: 40,
                             margin: EdgeInsets.fromLTRB(165,0,0,0),
-                            child: TextButton(
-                              onPressed: () {
+                            child: InkWell(
+                              onTap: () {
                                 print('forgot password');
                               },
                               child: Text(

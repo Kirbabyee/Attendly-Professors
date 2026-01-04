@@ -73,6 +73,13 @@ class _EndSessionState extends State<EndSession> {
     );
 
     if (confirm == true) {
+      if (_ending) return; // prevent double trigger
+      setState(() => _ending = true);
+
+      // optional delay (simulate ending session / saving to DB)
+      await Future.delayed(const Duration(milliseconds: 1000));
+
+      if (!mounted) return;
       Navigator.pop(context, 'ended'); // ✅ return result to Dashboard
     }
   }
@@ -118,6 +125,8 @@ class _EndSessionState extends State<EndSession> {
     );
   }
 
+  bool _ending = false;
+
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.width;
@@ -132,7 +141,7 @@ class _EndSessionState extends State<EndSession> {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   AttendlyBlueHeader(
-                    onBack: true,
+                    onBack: false,
                     courseTitle: 'Introduction to Human Computer Interaction',
                     courseCode: 'CCS101',
                     professor: 'Mr. Leviticio Dowell',
@@ -211,22 +220,41 @@ class _EndSessionState extends State<EndSession> {
                         ),
                         SizedBox(height: 10,),
                         Center(
-                          child: OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(
-                                  backgroundColor: Color(0xFFB60202),
-                                  side: BorderSide.none,
-                                  shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadiusGeometry.circular(8)
-                                  )
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              backgroundColor: const Color(0xFFB60202),
+                              side: BorderSide.none,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
                               ),
-                              onPressed: _confirmEndSession,
-                              label: Text(
-                                'End Class Session',
-                                style: TextStyle(
-                                    color: Colors.white
-                                ),
-                              )),
-                        )
+                            ),
+                            onPressed: _ending ? null : _confirmEndSession,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (_ending) ...[
+                                    const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                  ],
+                                  Text(
+                                    _ending ? 'Ending...' : 'End Class Session',
+                                    style: const TextStyle(color: Colors.white),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+
                       ],
                     ),
                   ),

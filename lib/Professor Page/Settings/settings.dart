@@ -379,58 +379,50 @@ class _SettingsState extends State<Settings> {
                     SizedBox(height: 10),
 
                     // Terms and Privacy Policy
-                    // Terms and Privacy Policy
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         SizedBox(
-                            height: 35,
-                            child: TextButton(
-                                style: TextButton.styleFrom(
-                                    shape: RoundedRectangleBorder()
-                                ),
-                                onPressed: () {
-                                  showDialog(
-                                    context: context,
-                                    barrierDismissible: true,
-                                    builder: (context) {
-                                      return AlertDialog(
-                                        shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadiusGeometry.circular(8)
-                                        ),
-                                        backgroundColor: Colors.white,
-                                        title: const Text(
-                                          'Terms of Service',
-                                          style: TextStyle(
-                                              fontWeight: FontWeight.w500
-                                          ),
-                                        ),
-                                        content: SingleChildScrollView( // 👈 makes it scrollable
-                                          child: Text(
-                                            termOfService,
-                                            textAlign: TextAlign.justify,
-                                          ),
-                                        ),
-                                      );
-                                    },
+                          child: InkWell(
+                            onTap: () {
+                              showDialog(
+                                context: context,
+                                barrierDismissible: true,
+                                builder: (context) {
+                                  return AlertDialog(
+                                    shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadiusGeometry.circular(8)
+                                    ),
+                                    backgroundColor: Colors.white,
+                                    title: const Text(
+                                      'Terms of Service',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w500
+                                      ),
+                                    ),
+                                    content: SingleChildScrollView( // 👈 makes it scrollable
+                                      child: Text(
+                                        termOfService,
+                                        textAlign: TextAlign.justify,
+                                      ),
+                                    ),
                                   );
                                 },
-                                child: Text(
-                                  'Terms of Service',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.black
-                                  ),
-                                )
+                              );
+                            },
+                            child: Text(
+                              'Terms of Service',
+                              style: TextStyle(
+                                fontSize: 12,
+                                decoration: TextDecoration.underline
+                              ),
                             )
+                          )
                         ),
+                        SizedBox(width: 20,),
                         SizedBox(
-                          height: 35,
-                          child: TextButton(
-                            style: TextButton.styleFrom(
-                                shape: RoundedRectangleBorder()
-                            ),
-                            onPressed: () {
+                          child: InkWell(
+                            onTap: () {
                               showDialog(
                                 context: context,
                                 barrierDismissible: true,
@@ -493,7 +485,8 @@ class _SettingsState extends State<Settings> {
                               'Privacy Policy',
                               style: TextStyle(
                                 color: Colors.black,
-                                fontSize: 12
+                                fontSize: 12,
+                                decoration: TextDecoration.underline
                               ),
                             ),
                           ),
@@ -501,7 +494,7 @@ class _SettingsState extends State<Settings> {
                       ],
                     ),
 
-                    SizedBox(height: 10),
+                    SizedBox(height: 20),
 
                     // Logout Button
                     OutlinedButton.icon(
@@ -518,7 +511,7 @@ class _SettingsState extends State<Settings> {
                       label: Text('Logout', style: TextStyle(color: Colors.red)),
                     ),
 
-                    SizedBox(height: 20),
+                    SizedBox(height: 10),
                   ],
                 ),
               ),

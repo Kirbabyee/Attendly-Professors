@@ -11,12 +11,18 @@ class CreateClassSheet extends StatefulWidget {
 }
 
 class _CreateClassSheetState extends State<CreateClassSheet> {
+
+  final List<String> _days = const [
+    'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
+  ];
+
+  String? _selectedDay; // selected dropdown value
+
   final _formKey = GlobalKey<FormState>();
 
   final _className = TextEditingController();
   final _classCode = TextEditingController();
   final _course = TextEditingController();
-  final _day = TextEditingController();
   final _room = TextEditingController();
 
   int _startHour = 12, _startMinute = 0;
@@ -30,7 +36,6 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
     _className.dispose();
     _classCode.dispose();
     _course.dispose();
-    _day.dispose();
     _room.dispose();
     super.dispose();
   }
@@ -49,7 +54,7 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
       ),
       helperText: ' ',
       helperStyle: TextStyle(
-        fontSize: 10,
+        fontSize: 12,
       ),
       errorStyle: TextStyle(
         fontSize: 10,
@@ -182,7 +187,7 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
-
+    final screenHeight = MediaQuery.of(context).size.height;
     return SafeArea(
       top: false,
       child: Padding(
@@ -214,45 +219,66 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
                   const SizedBox(height: 18),
 
                   // Class Name
-                  _label('Class Name'),
+                  _label('Course Name'),
                   TextFormField(
                     controller: _className,
-                    decoration: _input('Enter Class Name'),
+                    style: TextStyle(
+                      fontSize: 12
+                    ),
+                    decoration: _input('Enter Course Name'),
                     validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 8),
 
                   // Class code
                   _label('Class Code'),
                   TextFormField(
                     controller: _classCode,
+                    style: TextStyle(
+                        fontSize: 12
+                    ),
                     decoration: _input('Enter Class Code'),
                     validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 8),
 
                   // Course
-                  _label('Course'),
+                  _label('Year & Section'),
                   TextFormField(
                     controller: _course,
-                    decoration: _input('Enter Course'),
+                    style: TextStyle(
+                        fontSize: 12
+                    ),
+                    decoration: _input('Enter Year & Section'),
                     validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 8),
 
-                  // Day
+                  // Day (Dropdown)
                   _label('Day'),
-                  TextFormField(
-                    controller: _day,
-                    decoration: _input('Enter Day'),
-                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+                  DropdownButtonFormField<String>(
+                    value: _selectedDay,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.black
+                    ),
+                    decoration: _input('Select Day'),
+                    dropdownColor: Colors.white,
+                    items: _days
+                        .map((d) => DropdownMenuItem(value: d, child: Text(d)))
+                        .toList(),
+                    onChanged: (v) => setState(() => _selectedDay = v),
+                    validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 8),
 
                   // Room
                   _label('Room'),
                   TextFormField(
                     controller: _room,
+                    style: TextStyle(
+                        fontSize: 12
+                    ),
                     decoration: _input('Enter Room Number'),
                     validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
                   ),
@@ -302,11 +328,11 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
                           Navigator.pop(
                             context,
                             ClassItem(
-                              course: _course.text.trim(),
-                              classCode: _classCode.text.trim(),
+                              course: _className.text.trim(),
+                              classCode: _classCode.text.trim().toUpperCase(),
                               professor: 'Mr. Leviticio Dowell', // or from your user/profile
-                              room: _room.text.trim(),
-                              sched: '${_day.text.trim()}: '
+                              room: 'Room ${_room.text.trim()}',
+                              sched: '${_selectedDay}: '
                                   '${_formatTime(_startHour, _startMinute, _startIsAm)} - '
                                   '${_formatTime(_endHour, _endMinute, _endIsAm)}',
                               session: 'Upcoming', // default for newly created

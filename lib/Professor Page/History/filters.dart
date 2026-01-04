@@ -21,7 +21,7 @@ class DataFilter extends StatefulWidget {
 }
 
 class _DataFilterState extends State<DataFilter> {
-  List<String> classOptions = ['All', 'CCS101', 'CCS125'];
+  List<String> classOptions = ['All'];
 
   final TextEditingController searchController = TextEditingController();
 
@@ -64,6 +64,11 @@ class _DataFilterState extends State<DataFilter> {
     ];
 
     filteredRecords = List.from(allRecords); // show all at start
+
+    classOptions = [
+      'All',
+      ...{ for (final r in allRecords) r.courseName }
+    ];
   }
 
   void applyFilters() {
@@ -77,12 +82,13 @@ class _DataFilterState extends State<DataFilter> {
 
         // 3) Dropdown class filter
         final matchesClass =
-            selectedClass == 'All' || record.className == selectedClass;
+            selectedClass == 'All' || record.courseName == selectedClass;
 
         return matchesSearch && matchesClass;
       }).toList();
     });
   }
+
 
   @override
   void dispose() {
@@ -135,28 +141,32 @@ class _DataFilterState extends State<DataFilter> {
                 // Dropdown
                 Align(
                   alignment: Alignment.centerRight,
-                  child: DropdownButton<String>(
-                    dropdownColor: Colors.white,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[700]
+                  child: SizedBox(
+                    width: MediaQuery.of(context).size.width * 0.3,
+                    child: DropdownButton<String>(
+                      isExpanded: true, // important so it uses the SizedBox width
+                      dropdownColor: Colors.white,
+                      style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                      value: selectedClass,
+                      items: classOptions.map((c) {
+                        return DropdownMenuItem(
+                          value: c,
+                          child: Text(
+                            c,
+                            overflow: TextOverflow.ellipsis, // prevent long text overflow
+                            maxLines: 1,
+                          ),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setState(() => selectedClass = value);
+                        applyFilters();
+                      },
                     ),
-                    value: selectedClass,
-                    items: classOptions.map((c) {
-                      return DropdownMenuItem(
-                        value: c,
-                        child: Text(c),
-                      );
-                    }).toList(),
-                    onChanged: (value) {
-                      if (value == null) return;
-                      setState(() {
-                        selectedClass = value;
-                      });
-                      applyFilters();
-                    },
                   ),
                 ),
+
 
                 // Title + Chips
                 Column(

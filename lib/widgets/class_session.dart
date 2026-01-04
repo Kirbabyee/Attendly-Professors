@@ -31,7 +31,7 @@ class AttendlyBlueHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.width;
     return Container(
-      height: screenHeight > 370 && onBack ? height : screenHeight > 370 && !onBack ? 180 : onBack ? 180 : 130,
+      height: screenHeight > 370 && onBack ? height : screenHeight > 370 && !onBack ? 150 : onBack ? 180 : 130,
       decoration: const BoxDecoration(
         color: Color(0xFF004280),
         borderRadius: BorderRadius.vertical(

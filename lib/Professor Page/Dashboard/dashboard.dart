@@ -286,9 +286,10 @@ class _DashboardState extends State<Dashboard> {
                       ),
                     ),
                   ],
-                  onSelected: (value) {
+                  onSelected: (value) async {
                     if (value == 'archive') {
-                      onArchive();
+                      final ok = await _confirmArchive();
+                      if (ok) onArchive();
                     }
                   },
                 ),
@@ -299,6 +300,38 @@ class _DashboardState extends State<Dashboard> {
       ),
     );
   }
+
+  Future<bool> _confirmArchive() async { // Archive confirmation modal
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          title: const Text('Archive this class?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('No'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text(
+                'Yes',
+                style: TextStyle(color: Colors.red),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    return result ?? false;
+  }
+
 
   @override
   Widget build(BuildContext context) {

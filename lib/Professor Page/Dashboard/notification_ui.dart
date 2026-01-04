@@ -44,7 +44,12 @@ class _NotificationsDrawerState extends State<NotificationsDrawer> {
                       setState(() => unRead = false);
                       widget.onUnreadChanged(false); // ✅ update Dashboard
                     },
-                    child: const Text('Mark all as read'),
+                    child: Text(
+                      'Mark all as read',
+                      style: TextStyle(
+                        color: Color(0xFF043B6F)
+                      ),
+                    ),
                   ),
 
                   Stack(
