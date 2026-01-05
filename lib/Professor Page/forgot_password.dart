@@ -3,14 +3,14 @@ import 'package:flutter/services.dart';
 
 import 'mainshell.dart';
 
-class Login extends StatefulWidget {
-  const Login({super.key});
+class ForgotPassword extends StatefulWidget {
+  const ForgotPassword({super.key});
 
   @override
-  State<Login> createState() => _LoginState();
+  State<ForgotPassword> createState() => _ForgotPasswordState();
 }
 
-class _LoginState extends State<Login> {
+class _ForgotPasswordState extends State<ForgotPassword> {
 
   String? emailValidator(String? value) {
     final email = value?.trim() ?? '';
@@ -85,7 +85,7 @@ class _LoginState extends State<Login> {
                   SizedBox(height: 10,),
                   Container(
                     child: Text(
-                      'Log in to your Account',
+                      'Forgot Password',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                       ),
@@ -172,98 +172,6 @@ class _LoginState extends State<Login> {
                           ),
                         ),
                         SizedBox(height: screenHeight > 370 ? 15 : 10),
-                        // Password
-                        Container(child: Text(
-                          'Password',
-                          style: TextStyle(
-                              fontSize: screenHeight > 370 ? 14 : 12
-                          ),
-                        ),),
-                        SizedBox(height: 5,),
-                        SizedBox(
-                          height: screenHeight > 370 ? 55 : 48,
-                          width: 300,
-                          child: TextFormField( // Input box
-                            controller: _passwordController,
-                            style: TextStyle(fontSize: 14),
-                            obscureText: (showPassword ? true : false),
-                            decoration: InputDecoration(
-                              errorMaxLines: 1,
-                              errorStyle: TextStyle(
-                                fontSize: 10,
-                                height: 1,
-                              ),
-                              hintText: 'Enter Password', // Placeholder
-                              hintStyle: TextStyle(
-                                color: Colors.grey, // Change placeholder color
-                                fontSize: 14,
-                              ),
-                              prefixIcon: Icon(
-                                Icons.lock_outline, // Add icon to the placeholder
-                                color: Colors.grey, // Change the color of the icon
-                                size: 20,
-                              ),
-                              suffixIcon: IconButton(
-                                icon: Icon(showPassword ? Icons.visibility_off : Icons.visibility),
-                                onPressed: () {
-                                  setState(() {
-                                    showPassword = !showPassword;
-                                  });
-                                },
-                              ),
-                              contentPadding: const EdgeInsets.symmetric( // Add padding
-                                horizontal: 10,
-                                vertical: 10,
-                              ),
-                              // Add border to the input box
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: const BorderSide(
-                                    color: Colors.grey
-                                )
-                              ),
-                              focusedBorder: OutlineInputBorder(  // Change color of the border when clicked
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: const BorderSide(
-                                    color: Colors.black
-                                )
-                              ),
-                              errorBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: const BorderSide(
-                                    color: Colors.red
-                                )
-                              ),
-                              focusedErrorBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: const BorderSide(
-                                    color: Colors.red
-                                ),
-                              ),
-                            ),
-                            validator: (value) {
-                              final v = value ?? '';
-                              if (v.isEmpty) return 'Password is required';
-                              if (v.length < 8) return 'Minimum 8 characters';
-                              return null;
-                            },
-                          ),
-                        ),
-                        Container(
-                          margin: EdgeInsets.fromLTRB(165,0,0,0),
-                          child: InkWell(
-                            onTap: () {
-                              Navigator.pushNamed(context, '/forgot_password');
-                            },
-                            child: Text(
-                              'Forgot Password?',
-                              style: TextStyle(
-                                color: Colors.black,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        ),
                       ],
                     ),
                   ),
@@ -277,50 +185,11 @@ class _LoginState extends State<Login> {
                             borderRadius: BorderRadiusGeometry.circular(6)
                         )
                       ),
-                      onPressed: () async {
-                        if (!_formKey.currentState!.validate()) return;
+                      onPressed: () {
 
-                        // Show loading
-                        showDialog(
-                          context: context,
-                          barrierDismissible: false,
-                          builder: (_) {
-                            return Dialog(
-                              backgroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              child: Padding(
-                                padding: const EdgeInsets.all(18),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: const [
-                                    SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(strokeWidth: 2),
-                                    ),
-                                    SizedBox(width: 12),
-                                    Text('Signing in...'),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        );
-
-                        // ✅ your real login goes here (Firebase signIn, etc.)
-                        await Future.delayed(const Duration(milliseconds: 3000));
-
-                        if (!mounted) return;
-
-                        Navigator.pop(context); // close loading
-
-                        Navigator.of(context).pushReplacement(
-                          MaterialPageRoute(builder: (_) => const Mainshell()),
-                        );
                       },
                       child: Text(
-                        'Sign In',
+                        'Email Me',
                         style: TextStyle(
                           color: Colors.white,
                         ),
