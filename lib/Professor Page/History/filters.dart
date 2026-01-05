@@ -28,6 +28,8 @@ class _DataFilterState extends State<DataFilter> {
   String selectedStatus = 'All'; // chips: All/Present/Late/Absent
   String selectedClass = 'All';  // dropdown: Filter by class
 
+  DateTime? selectedDate;
+
   List<AttendanceRecord> allRecords = [];
   List<AttendanceRecord> filteredRecords = [];
 
@@ -39,12 +41,12 @@ class _DataFilterState extends State<DataFilter> {
       AttendanceRecord(
         courseName: 'Introduction to Computer Interaction',
         className: 'CCS101',
-        date: DateTime(2025, 12, 14),
+        date: DateTime(2025, 12, 12),
       ),
       AttendanceRecord(
         courseName: 'Introduction to Computer Interaction',
         className: 'CCS101',
-        date: DateTime(2025, 12, 14),
+        date: DateTime(2025, 12, 11),
       ),
       AttendanceRecord(
         courseName: 'Software Engineering',
@@ -54,7 +56,7 @@ class _DataFilterState extends State<DataFilter> {
       AttendanceRecord(
         courseName: 'Software Engineering',
         className: 'CCS125',
-        date: DateTime(2025, 12, 14),
+        date: DateTime(2025, 11, 25),
       ),
       AttendanceRecord(
         courseName: 'Software Engineering',
@@ -76,19 +78,56 @@ class _DataFilterState extends State<DataFilter> {
 
     setState(() {
       filteredRecords = allRecords.where((record) {
-        // 1) Search filter
+        // Search filter
         final matchesSearch =
         record.courseName.toLowerCase().contains(query);
 
-        // 3) Dropdown class filter
+        // Dropdown filter
         final matchesClass =
             selectedClass == 'All' || record.courseName == selectedClass;
 
-        return matchesSearch && matchesClass;
+        // Date filter (same day only)
+        final matchesDate = selectedDate == null ||
+            (record.date.year == selectedDate!.year &&
+                record.date.month == selectedDate!.month &&
+                record.date.day == selectedDate!.day);
+
+        return matchesSearch && matchesClass && matchesDate;
       }).toList();
     });
   }
 
+  Future<void> pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: selectedDate ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Colors.blue,     // header & selected date
+              onPrimary: Colors.white,  // header text
+              surface: Colors.white,    // ✅ dialog background
+              onSurface: Colors.black,  // body text
+            ),
+            dialogBackgroundColor: Colors.white, // ✅ ensures white bg
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() => selectedDate = picked);
+      applyFilters();
+    }
+  }
+
+  String _fmt(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   @override
   void dispose() {
@@ -138,35 +177,83 @@ class _DataFilterState extends State<DataFilter> {
                   ),
                 ),
 
-                // Dropdown
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: SizedBox(
-                    width: MediaQuery.of(context).size.width * 0.3,
-                    child: DropdownButton<String>(
-                      isExpanded: true, // important so it uses the SizedBox width
-                      dropdownColor: Colors.white,
-                      style: TextStyle(fontSize: 12, color: Colors.grey[700]),
-                      value: selectedClass,
-                      items: classOptions.map((c) {
-                        return DropdownMenuItem(
-                          value: c,
-                          child: Text(
-                            c,
-                            overflow: TextOverflow.ellipsis, // prevent long text overflow
-                            maxLines: 1,
+                SizedBox(height: 10,),
+
+                Container(
+                  child: Row(
+                    children: [
+                      // Date Filter Row
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: SizedBox(
+                          width: MediaQuery.of(context).size.width * 0.35,
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              backgroundColor: const Color(0xFFEAEAEA),
+                              side: BorderSide.none,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            onPressed: pickDate,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  selectedDate == null
+                                      ? 'Select date'
+                                      : _fmt(selectedDate!),
+                                  style: const TextStyle(fontSize: 12, color: Colors.black),
+                                ),
+                                if (selectedDate != null)
+                                  GestureDetector(
+                                    onTap: () {
+                                      setState(() => selectedDate = null);
+                                      applyFilters();
+                                    },
+                                    child: const Icon(Icons.close, size: 16),
+                                  ),
+                              ],
+                            ),
                           ),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        if (value == null) return;
-                        setState(() => selectedClass = value);
-                        applyFilters();
-                      },
-                    ),
+                        ),
+                      ),
+
+                      SizedBox(width: screenHeight * .09),
+
+                      // Dropdown
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: SizedBox(
+                          width: MediaQuery.of(context).size.width * 0.3,
+                          child: DropdownButton<String>(
+                            isExpanded: true, // important so it uses the SizedBox width
+                            dropdownColor: Colors.white,
+                            style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                            value: selectedClass,
+                            items: classOptions.map((c) {
+                              return DropdownMenuItem(
+                                value: c,
+                                child: Text(
+                                  c,
+                                  overflow: TextOverflow.ellipsis, // prevent long text overflow
+                                  maxLines: 1,
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: (value) {
+                              if (value == null) return;
+                              setState(() => selectedClass = value);
+                              applyFilters();
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
 
+                SizedBox(height: 10,),
 
                 // Title + Chips
                 Column(

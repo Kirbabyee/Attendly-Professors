@@ -31,6 +31,8 @@ class _AccountInformationState extends State<AccountInformation> {
     });
   }
 
+  String _email = 'LeviticioDowell@gmail.com';
+
   String maskEmail(String email, {int keepStart = 3, int keepEnd = 2}) { // emailk masking
     email = email.trim();
     final atIndex = email.indexOf('@');
@@ -252,16 +254,22 @@ class _AccountInformationState extends State<AccountInformation> {
                                 style: TextStyle(fontSize: 12),
                               ),
                               InkWell(
-                                onTap: () {
-                                  Navigator.push(
+                                onTap: () async {
+                                  final newEmail = await Navigator.push<String>(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (_) => const ChangeEmail(), // 👈 your change email page
+                                      builder: (_) => ChangeEmail(currentEmail: _email),
                                     ),
                                   );
+
+                                  if (newEmail != null && newEmail.trim().isNotEmpty) {
+                                    setState(() {
+                                      _email = newEmail.trim();
+                                    });
+                                  }
                                 },
                                 child: Text(
-                                  maskEmail('LeviticioDowell@gmail.com'),
+                                  maskEmail(_email),
                                   style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.bold,

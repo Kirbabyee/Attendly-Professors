@@ -124,7 +124,7 @@ class _StartSessionState extends State<StartSession> {
 
   @override
   Widget build(BuildContext context) {
-    final screenHeight = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
@@ -275,13 +275,14 @@ class _StartSessionState extends State<StartSession> {
                         SizedBox(height: 10,),
                         !viewAllList
                             ? Container(
+                          height: screenHeight * .20,
                           child: Column(
-                            children: widget.students.take(4)
+                            children: widget.students.take(6)
                                       .map((stud) => student(stud)).toList(),
                           ),
                         )
                             : SizedBox(
-                          height: 170,
+                          height: screenHeight * .25,
                           child: ListView.builder(
                             itemCount: widget.students.length,
                             itemBuilder: (context, index) {

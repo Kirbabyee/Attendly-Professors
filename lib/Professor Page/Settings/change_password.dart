@@ -87,9 +87,7 @@ class _ChangePasswordState extends State<ChangePassword> {
                 children: [
                   IconButton(
                     onPressed: () {
-                      Navigator.of(context).pushReplacement(
-                        MaterialPageRoute(builder: (_) => const Mainshell(initialIndex: 3,)),
-                      );
+                      Navigator.pop(context);
                     },
                     icon: Icon(CupertinoIcons.arrow_left)
                   ),
