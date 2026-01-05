@@ -1,6 +1,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:professor/Professor%20Page/attendance/class_session.dart';
+import 'package:professor/Professor%20Page/forgot_password.dart';
 
 import 'Professor Page/History/history.dart';
 import 'Professor Page/Settings/account_information.dart';
@@ -22,6 +23,7 @@ void main() {
       '/settings': (context) => Settings(),
       '/account_information': (context) => AccountInformation(),
       '/change_password': (context) => ChangePassword(),
+      '/forgot_password': (context) => ForgotPassword(),
     },
   )); // MaterialApp
 }
