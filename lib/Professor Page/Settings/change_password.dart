@@ -11,6 +11,49 @@ class ChangePassword extends StatefulWidget {
 }
 
 class _ChangePasswordState extends State<ChangePassword> {
+  Future<void> _showLoading() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) {
+        return const Center(
+          child: CircularProgressIndicator(),
+        );
+      },
+    );
+  }
+
+  Future<void> _handlePasswordChange() async {
+    // 1. Show loading
+    await _showLoading();
+
+    // 2. Fake delay (replace with API call in real app)
+    await Future.delayed(const Duration(seconds: 2));
+
+    // 3. Close loading
+    Navigator.pop(context);
+
+    // 4. Show success dialog
+    await showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          title: Icon(Icons.check_circle_outline, color: Colors.green, size: 50,),
+          content: const Text(
+            'Your password has been changed successfully.',
+            textAlign: TextAlign.center,
+          ),
+        );
+      },
+    );
+
+    if (!mounted) return;
+
+    Navigator.pop(context);
+  }
 
   final _formKey = GlobalKey<FormState>();
 
@@ -19,6 +62,14 @@ class _ChangePasswordState extends State<ChangePassword> {
   final TextEditingController _confirmPassword = TextEditingController();
 
   bool showPassword = false;
+
+  @override
+  void dispose() {
+    _newPassword.dispose();
+    _currentPassword.dispose();
+    _confirmPassword.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -86,10 +137,12 @@ class _ChangePasswordState extends State<ChangePassword> {
               child: Row(
                 children: [
                   IconButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                    },
-                    icon: Icon(CupertinoIcons.arrow_left)
+                      onPressed: () {
+                        Navigator.of(context).pushReplacement(
+                          MaterialPageRoute(builder: (_) => const Mainshell(initialIndex: 3,)),
+                        );
+                      },
+                      icon: Icon(CupertinoIcons.arrow_left)
                   ),
                   Text('Back')
                 ],
@@ -100,15 +153,15 @@ class _ChangePasswordState extends State<ChangePassword> {
               width: 350,
               padding: EdgeInsets.all(15),
               decoration: BoxDecoration(
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black26,
-                    blurRadius: 2,
-                    offset: Offset(0, 5),
-                  ),
-                ],
-                borderRadius: BorderRadiusGeometry.circular(8),
-                color: Colors.white
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black26,
+                      blurRadius: 2,
+                      offset: Offset(0, 5),
+                    ),
+                  ],
+                  borderRadius: BorderRadiusGeometry.circular(8),
+                  color: Colors.white
               ),
               child: Form(
                 key: _formKey,
@@ -124,8 +177,8 @@ class _ChangePasswordState extends State<ChangePassword> {
                         Text(
                           'Change Password',
                           style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600
                           ),
                         ),
                       ],
@@ -153,35 +206,35 @@ class _ChangePasswordState extends State<ChangePassword> {
                                 fontSize: 12,
                               ),
                               decoration: InputDecoration(
-                                errorMaxLines: 1,
-                                errorStyle: TextStyle(
-                                  fontSize: 10,
-                                ),
-                                contentPadding: EdgeInsets.all(10), // Padding inside the inputbar
-                                filled: true,
-                                fillColor: Color(0x50D9D9D9),
-                                hintText: 'Enter current password',
-                                hintStyle: TextStyle(
-                                  fontSize: 12,
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide.none,
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide(
-                                    color: Colors.black,
-                                    width: .5
+                                  errorMaxLines: 1,
+                                  errorStyle: TextStyle(
+                                    fontSize: 10,
                                   ),
-                                ),
-                                errorBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide(
-                                      color: Colors.red,
-                                      width: .5
+                                  contentPadding: EdgeInsets.all(10), // Padding inside the inputbar
+                                  filled: true,
+                                  fillColor: Color(0x50D9D9D9),
+                                  hintText: 'Enter current password',
+                                  hintStyle: TextStyle(
+                                    fontSize: 12,
                                   ),
-                                )
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: BorderSide(
+                                        color: Colors.black,
+                                        width: .5
+                                    ),
+                                  ),
+                                  errorBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: BorderSide(
+                                        color: Colors.red,
+                                        width: .5
+                                    ),
+                                  )
                               ),
                             ),
                           )
@@ -211,35 +264,35 @@ class _ChangePasswordState extends State<ChangePassword> {
                                 fontSize: 12,
                               ),
                               decoration: InputDecoration(
-                                errorMaxLines: 1,
-                                errorStyle: TextStyle(
-                                  fontSize: 10,
-                                ),
-                                contentPadding: EdgeInsets.all(10), // Padding inside the inputbar
-                                filled: true,
-                                fillColor: Color(0x50D9D9D9),
-                                hintText: 'Enter new password',
-                                hintStyle: TextStyle(
-                                  fontSize: 12,
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide.none,
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide(
-                                      color: Colors.black,
-                                      width: .5
+                                  errorMaxLines: 1,
+                                  errorStyle: TextStyle(
+                                    fontSize: 10,
                                   ),
-                                ),
-                                errorBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide(
-                                      color: Colors.red,
-                                      width: .5
+                                  contentPadding: EdgeInsets.all(10), // Padding inside the inputbar
+                                  filled: true,
+                                  fillColor: Color(0x50D9D9D9),
+                                  hintText: 'Enter new password',
+                                  hintStyle: TextStyle(
+                                    fontSize: 12,
                                   ),
-                                )
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: BorderSide(
+                                        color: Colors.black,
+                                        width: .5
+                                    ),
+                                  ),
+                                  errorBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: BorderSide(
+                                        color: Colors.red,
+                                        width: .5
+                                    ),
+                                  )
                               ),
                             ),
                           )
@@ -263,6 +316,7 @@ class _ChangePasswordState extends State<ChangePassword> {
                                 if ((value == null || value.isEmpty) && !_newPassword.text.isEmpty) {
                                   return 'Please confirm your password';
                                 }
+                                if(value != _newPassword.text) return 'Password must match';
                                 return null;
                               },
                               style: TextStyle(
@@ -287,15 +341,15 @@ class _ChangePasswordState extends State<ChangePassword> {
                                 focusedBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(8),
                                   borderSide: BorderSide(
-                                      color: Colors.black,
-                                      width: .5
+                                    color: Colors.black,
+                                    width: .5
                                   ),
                                 ),
                                 errorBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(8),
                                   borderSide: BorderSide(
-                                      color: Colors.red,
-                                      width: .5
+                                    color: Colors.red,
+                                    width: .5
                                   ),
                                 )
                               ),
@@ -305,6 +359,7 @@ class _ChangePasswordState extends State<ChangePassword> {
                       ),
                     ),
                     Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         SizedBox(width: 30,),
                         Transform.scale(
@@ -321,31 +376,36 @@ class _ChangePasswordState extends State<ChangePassword> {
                             ),
                           ),
                         ),
-                        Text('Show Password'),
+                        Text(
+                          'Show Password',
+                          style: TextStyle(
+                              fontSize: 12
+                          ),
+                        ),
                       ],
-                    )
+                    ),
+                    SizedBox(height: 10,),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Color(0xFF043B6F),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadiusGeometry.circular(8)
+                        )
+                      ),
+                      onPressed: () {
+                        if (_formKey.currentState!.validate()) {
+                          // All inputs valid
+                          _handlePasswordChange();
+                        }
+                      },
+                      child: const Text(
+                        'Change Password',
+                        style: TextStyle(
+                            color: Colors.white
+                        ),
+                      ),
+                    ),
                   ],
-                ),
-              ),
-            ),
-            SizedBox(height: 30,),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Color(0xFF043B6F),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadiusGeometry.circular(8)
-                )
-              ),
-              onPressed: () {
-                if (_formKey.currentState!.validate()) {
-                  // All inputs valid
-                  print('Passwords valid');
-                }
-              },
-              child: const Text(
-                'Change Password',
-                style: TextStyle(
-                  color: Colors.white
                 ),
               ),
             ),

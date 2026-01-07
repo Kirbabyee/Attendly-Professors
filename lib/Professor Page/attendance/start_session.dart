@@ -7,18 +7,27 @@ import '../../widgets/class_session.dart';
 
 class StartSession extends StatefulWidget {
   final List<String> students;
+  final VoidCallback onStarted;
 
   const StartSession({
     super.key,
     required this.students,
+    required this.onStarted,
   });
 
   @override
   State<StartSession> createState() => _StartSessionState();
 }
 
-
 class _StartSessionState extends State<StartSession> {
+  final ScrollController _studentScrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _studentScrollController.dispose();
+    super.dispose();
+  }
+
   bool viewAllList = false;
 
   List Students = [
@@ -116,11 +125,9 @@ class _StartSessionState extends State<StartSession> {
       await Future.delayed(const Duration(milliseconds: 700));
 
       if (!mounted) return;
-      Navigator.pop(context, 'started');
+      widget.onStarted(); // ✅ switches UI + updates dashboard
     }
   }
-
-
 
   @override
   Widget build(BuildContext context) {
@@ -275,19 +282,26 @@ class _StartSessionState extends State<StartSession> {
                         SizedBox(height: 10,),
                         !viewAllList
                             ? Container(
-                          height: screenHeight * .20,
+                          height: screenHeight * .18,
                           child: Column(
-                            children: widget.students.take(6)
+                            children: widget.students.take(5)
                                       .map((stud) => student(stud)).toList(),
                           ),
                         )
                             : SizedBox(
-                          height: screenHeight * .25,
-                          child: ListView.builder(
-                            itemCount: widget.students.length,
-                            itemBuilder: (context, index) {
-                              return student(widget.students[index]);
-                            },
+                          height: screenHeight * .22,
+                          child: Scrollbar(
+                            controller: _studentScrollController,
+                            thumbVisibility: true, // always visible
+                            radius: const Radius.circular(8),
+                            thickness: 4,
+                            child: ListView.builder(
+                              controller: _studentScrollController,
+                              itemCount: widget.students.length,
+                              itemBuilder: (context, index) {
+                                return student(widget.students[index]);
+                              },
+                            ),
                           ),
                         ),
 

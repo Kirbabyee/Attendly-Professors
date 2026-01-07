@@ -253,6 +253,19 @@ class _AccountInformationState extends State<AccountInformation> {
                                 'Email:',
                                 style: TextStyle(fontSize: 12),
                               ),
+                              Text(
+                                maskEmail(_email),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                          SizedBox(height: 10,),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
                               InkWell(
                                 onTap: () async {
                                   final newEmail = await Navigator.push<String>(
@@ -269,19 +282,16 @@ class _AccountInformationState extends State<AccountInformation> {
                                   }
                                 },
                                 child: Text(
-                                  maskEmail(_email),
+                                  'Change Email?',
                                   style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF105698), // link blue
-                                    decoration: TextDecoration.underline, // hyperlink look
-                                    decorationColor: Color(0xFF105698)
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF105698), // link blue
                                   ),
                                 ),
                               ),
                             ],
-                          ),
-
+                          )
                         ],
                       ),
                     ),

@@ -1,41 +1,81 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'mainshell.dart';
+import 'login.dart';
 
-class Login extends StatefulWidget {
-  const Login({super.key});
+class NewPassword extends StatefulWidget {
+  const NewPassword({super.key});
 
   @override
-  State<Login> createState() => _LoginState();
+  State<NewPassword> createState() => _NewPasswordState();
 }
 
-class _LoginState extends State<Login> {
-
-  String? emailValidator(String? value) {
-    final email = value?.trim() ?? '';
-
-    if (email.isEmpty) return 'Email is required';
-
-    final emailRegex = RegExp(r'^[\w\.-]+@([\w-]+\.)+[\w-]{2,}$');
-    if (!emailRegex.hasMatch(email)) return 'Enter a valid email';
-
-    return null; // ✅ valid
+class _NewPasswordState extends State<NewPassword> {
+  Future<void> _showLoading() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) {
+        return const Center(
+          child: CircularProgressIndicator(),
+        );
+      },
+    );
   }
 
+  String? emailValidator(String? value) {
+    return null; // ✅ valid
+  }
 
   bool showPassword = true;
   final _formKey = GlobalKey<FormState>();
 
-  final _studentNoController = TextEditingController();
-  final _passwordController = TextEditingController();
+  final _newPasswordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
 
   @override
   void dispose() {
-    _studentNoController.dispose();
-    _passwordController.dispose();
+    _newPasswordController.dispose();
+    _confirmPasswordController.dispose();
     super.dispose();
   }
+
+  Future<void> _handlePasswordChange() async {
+    // 1. Show loading
+    await _showLoading();
+
+    // 2. Fake delay (replace with API call in real app)
+    await Future.delayed(const Duration(seconds: 2));
+
+    // 3. Close loading
+    Navigator.pop(context);
+
+    // 4. Show success dialog
+    await showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          title: Icon(Icons.check_circle_outline, color: Colors.green, size: 50,),
+          content: const Text(
+            'Your password has been changed successfully.',
+            textAlign: TextAlign.center,
+          ),
+        );
+      },
+    );
+
+    if (!mounted) return;
+
+    // 5. Go to login
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => const Login()),
+    );
+  }
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -79,19 +119,22 @@ class _LoginState extends State<Login> {
                 children: [
                   SizedBox(height: !isKeyboard && screenHeight > 370 ? 210 : 130,),
                   Image.asset(
-                    width: screenHeight > 370 ? 400 : 300,
-                    'assets/logo.png'
+                      width: screenHeight > 370 ? 400 : 300,
+                      'assets/logo.png'
                   ), // Logo
+
                   SizedBox(height: 10,),
+
                   Container(
                     child: Text(
-                      'Log in to your Account',
+                      'Change Password',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
                   SizedBox(height: screenHeight > 370 ? 45 : 30,),
+
                   // Input Boxes
                   Form( // Put to form to add validations
                     key: _formKey,
@@ -101,9 +144,9 @@ class _LoginState extends State<Login> {
                         // Student No.
                         Container(
                           child: Text(
-                            'Email',
+                            'New Password',
                             style: TextStyle(
-                              fontSize: screenHeight > 370 ? 14 : 12
+                                fontSize: screenHeight > 370 ? 14 : 12
                             ),
                           ),
                         ),
@@ -112,7 +155,8 @@ class _LoginState extends State<Login> {
                           height: screenHeight > 370 ? 55 : 48,
                           width: 300,
                           child: TextFormField( // Input box
-                            controller: _studentNoController,
+                            obscureText: showPassword,
+                            controller: _newPasswordController,
                             style: TextStyle(fontSize: 14),
                             keyboardType: TextInputType.emailAddress,
                             decoration: InputDecoration(
@@ -121,14 +165,22 @@ class _LoginState extends State<Login> {
                                 fontSize: 10,
                                 height: 1,
                               ),
-                              hintText: 'Enter Email', // Placeholder
+                              hintText: 'Enter new password', // Placeholder
                               hintStyle: TextStyle(
                                 color: Colors.grey, // Change placeholder color
                                 fontSize: 14,
                               ),
                               prefixIcon: Icon(
-                                Icons.email_outlined, // Add icon to the placeholder
+                                Icons.lock_outline, // Add icon to the placeholder
                                 color: Colors.grey, // Change the color of the icon
+                              ),
+                              suffixIcon: IconButton(
+                                onPressed: () {
+                                  setState(() {
+                                    showPassword = !showPassword;
+                                  });
+                                },
+                                icon: Icon(!showPassword ? Icons.visibility : Icons.visibility_off)
                               ),
                               contentPadding: const EdgeInsets.symmetric( // Add padding
                                 horizontal: 10,
@@ -160,32 +212,41 @@ class _LoginState extends State<Login> {
                                 ),
                               ),
                             ),
-                            validator: emailValidator,
+                            validator: (value) {
+                              final v = value?.trim() ?? '';
+                              if (v.isEmpty) return 'Password is required';
+                              if (v.length < 6) return 'Password is too short';
+                              return null;
+                            },
                           ),
                         ),
+
                         SizedBox(height: screenHeight > 370 ? 15 : 10),
-                        // Password
-                        Container(child: Text(
-                          'Password',
-                          style: TextStyle(
-                              fontSize: screenHeight > 370 ? 14 : 12
+
+                        Container(
+                          child: Text(
+                            'Confirm Password',
+                            style: TextStyle(
+                                fontSize: screenHeight > 370 ? 14 : 12
+                            ),
                           ),
-                        ),),
+                        ),
                         SizedBox(height: 5,),
                         SizedBox(
                           height: screenHeight > 370 ? 55 : 48,
                           width: 300,
                           child: TextFormField( // Input box
-                            controller: _passwordController,
+                            obscureText: showPassword,
+                            controller: _confirmPasswordController,
                             style: TextStyle(fontSize: 14),
-                            obscureText: (showPassword ? true : false),
+                            keyboardType: TextInputType.emailAddress,
                             decoration: InputDecoration(
                               errorMaxLines: 1,
                               errorStyle: TextStyle(
                                 fontSize: 10,
                                 height: 1,
                               ),
-                              hintText: 'Enter Password', // Placeholder
+                              hintText: 'Confirm your password', // Placeholder
                               hintStyle: TextStyle(
                                 color: Colors.grey, // Change placeholder color
                                 fontSize: 14,
@@ -193,15 +254,14 @@ class _LoginState extends State<Login> {
                               prefixIcon: Icon(
                                 Icons.lock_outline, // Add icon to the placeholder
                                 color: Colors.grey, // Change the color of the icon
-                                size: 20,
                               ),
                               suffixIcon: IconButton(
-                                icon: Icon(showPassword ? Icons.visibility_off : Icons.visibility),
                                 onPressed: () {
                                   setState(() {
                                     showPassword = !showPassword;
                                   });
                                 },
+                                icon: Icon(!showPassword ? Icons.visibility : Icons.visibility_off)
                               ),
                               contentPadding: const EdgeInsets.symmetric( // Add padding
                                 horizontal: 10,
@@ -234,26 +294,12 @@ class _LoginState extends State<Login> {
                               ),
                             ),
                             validator: (value) {
-                              final v = value ?? '';
-                              if (v.isEmpty) return 'Password is required';
-                              if (v.length < 4) return 'Minimum 6 characters';
+                              final v = value?.trim() ?? '';
+                              if (v.isEmpty && !_newPasswordController.text.isEmpty) return 'Confirm password is required';
+                              if (v != _newPasswordController.text.trim()) return 'Password must match';
+                              if (v.length < 6) return 'Password is too short';
                               return null;
                             },
-                          ),
-                        ),
-                        Container(
-                          margin: EdgeInsets.fromLTRB(165,0,0,0),
-                          child: InkWell(
-                            onTap: () {
-                              Navigator.pushNamed(context, '/forgot_password');
-                            },
-                            child: Text(
-                              'Forgot Password?',
-                              style: TextStyle(
-                                color: Colors.black,
-                                fontSize: 12,
-                              ),
-                            ),
                           ),
                         ),
                       ],
@@ -269,50 +315,14 @@ class _LoginState extends State<Login> {
                             borderRadius: BorderRadiusGeometry.circular(6)
                         )
                       ),
-                      onPressed: () async {
-                        if (!_formKey.currentState!.validate()) return;
-
-                        // Show loading
-                        showDialog(
-                          context: context,
-                          barrierDismissible: false,
-                          builder: (_) {
-                            return Dialog(
-                              backgroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              child: Padding(
-                                padding: const EdgeInsets.all(18),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: const [
-                                    SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(strokeWidth: 2),
-                                    ),
-                                    SizedBox(width: 12),
-                                    Text('Signing in...'),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        );
-
-                        // ✅ your real login goes here (Firebase signIn, etc.)
-                        await Future.delayed(const Duration(milliseconds: 3000));
-
-                        if (!mounted) return;
-
-                        Navigator.pop(context); // close loading
-
-                        Navigator.of(context).pushReplacement(
-                          MaterialPageRoute(builder: (_) => const Mainshell()),
-                        );
+                      onPressed: () {
+                        if (_formKey.currentState!.validate()) {
+                          _handlePasswordChange();
+                        }
                       },
+
                       child: Text(
-                        'Sign In',
+                        'Email Me',
                         style: TextStyle(
                           color: Colors.white,
                         ),

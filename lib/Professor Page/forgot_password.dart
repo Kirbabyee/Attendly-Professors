@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'mainshell.dart';
-
 class ForgotPassword extends StatefulWidget {
   const ForgotPassword({super.key});
 
@@ -27,13 +25,11 @@ class _ForgotPasswordState extends State<ForgotPassword> {
   bool showPassword = true;
   final _formKey = GlobalKey<FormState>();
 
-  final _studentNoController = TextEditingController();
-  final _passwordController = TextEditingController();
+  final _emailController = TextEditingController();
 
   @override
   void dispose() {
-    _studentNoController.dispose();
-    _passwordController.dispose();
+    _emailController.dispose();
     super.dispose();
   }
 
@@ -112,7 +108,7 @@ class _ForgotPasswordState extends State<ForgotPassword> {
                           height: screenHeight > 370 ? 55 : 48,
                           width: 300,
                           child: TextFormField( // Input box
-                            controller: _studentNoController,
+                            controller: _emailController,
                             style: TextStyle(fontSize: 14),
                             keyboardType: TextInputType.emailAddress,
                             decoration: InputDecoration(
@@ -160,15 +156,7 @@ class _ForgotPasswordState extends State<ForgotPassword> {
                                 ),
                               ),
                             ),
-
-                            // TODO: dont forget to change the validation to email validation
-                            // here: emailValidator
-                            validator: (value) {
-                              final v = value?.trim() ?? '';
-                              if (v.isEmpty) return 'Student number is required';
-                              if (v.length < 8) return 'Student number is too short';
-                              return null;
-                            },
+                            validator: emailValidator,
                           ),
                         ),
                         SizedBox(height: screenHeight > 370 ? 15 : 10),
@@ -186,7 +174,9 @@ class _ForgotPasswordState extends State<ForgotPassword> {
                         )
                       ),
                       onPressed: () {
-
+                        if (_formKey.currentState!.validate()) {
+                          Navigator.pushNamed(context, '/new_password');
+                        }
                       },
                       child: Text(
                         'Email Me',

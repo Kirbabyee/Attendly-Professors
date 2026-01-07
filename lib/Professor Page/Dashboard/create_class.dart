@@ -4,13 +4,64 @@ import 'package:flutter/material.dart';
 import 'class_item.dart';
 
 class CreateClassSheet extends StatefulWidget {
-  const CreateClassSheet({super.key});
+  final ClassItem? initialItem; // ✅ optional for edit
+
+  const CreateClassSheet({super.key, this.initialItem});
 
   @override
   State<CreateClassSheet> createState() => _CreateClassSheetState();
 }
 
 class _CreateClassSheetState extends State<CreateClassSheet> {
+  (int, int, bool) _parseTime(String time) {
+    // "9:00 AM"
+    final reg = RegExp(r'^(\d{1,2}):(\d{2})\s*(AM|PM)$', caseSensitive: false);
+    final m = reg.firstMatch(time.trim());
+    if (m == null) return (12, 0, true);
+
+    final hour = int.parse(m.group(1)!);
+    final minute = int.parse(m.group(2)!);
+    final am = m.group(3)!.toUpperCase() == 'AM';
+
+    return (hour, minute, am);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+
+    final item = widget.initialItem;
+    if (item != null) {
+      // NOTE: You used "course" as Year & Section in your sheet earlier,
+      // so map it correctly based on your meaning.
+      _course.text = item.course;      // if this is Year & Section in your app, swap as needed
+      _classCode.text = item.classCode;
+      _room.text = item.room;
+
+      // courseName field in your sheet is _className
+      _className.text = item.course; // if you want course name, you probably need a separate property
+      // If your ClassItem doesn't separate courseName vs year&section,
+      // you may want to adjust your ClassItem model later.
+
+      // Parse sched: "Monday: 9:00 AM - 11:00 AM"
+      _selectedDay = item.sched.split(':').first.trim();
+
+      final timePart = item.sched.split(':').sublist(1).join(':').trim();
+      final startStr = timePart.split('-').first.trim();
+      final endStr = timePart.split('-').last.trim();
+
+      final start = _parseTime(startStr);
+      _startHour = start.$1;
+      _startMinute = start.$2;
+      _startIsAm = start.$3;
+
+      final end = _parseTime(endStr);
+      _endHour = end.$1;
+      _endMinute = end.$2;
+      _endIsAm = end.$3;
+    }
+  }
+
 
   final List<String> _days = const [
     'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
@@ -186,6 +237,7 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final isEdit = widget.initialItem != null;
     final bottom = MediaQuery.of(context).viewInsets.bottom;
     final screenHeight = MediaQuery.of(context).size.height;
     return SafeArea(
@@ -325,19 +377,22 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
                           if (!_formKey.currentState!.validate()) return;
 
                           // Close the Create Class modal first
+                          final isEdit = widget.initialItem != null;
+
                           Navigator.pop(
                             context,
                             ClassItem(
                               course: _className.text.trim(),
                               classCode: _classCode.text.trim().toUpperCase(),
-                              professor: 'Mr. Leviticio Dowell', // or from your user/profile
+                              professor: widget.initialItem?.professor ?? 'Mr. Leviticio Dowell',
                               room: 'Room ${_room.text.trim()}',
                               sched: '${_selectedDay}: '
                                   '${_formatTime(_startHour, _startMinute, _startIsAm)} - '
                                   '${_formatTime(_endHour, _endMinute, _endIsAm)}',
-                              session: 'Upcoming', // default for newly created
+                              session: widget.initialItem?.session ?? 'Upcoming',
                             ),
                           );
+
 
 
                           // Show success dialog after closing
@@ -388,9 +443,9 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
                             );
                           });
                         },
-                        child: const Text(
-                          'Create',
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                        child: Text(
+                          isEdit ? 'Save Changes' : 'Create',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
                         ),
                       ),
                     ),

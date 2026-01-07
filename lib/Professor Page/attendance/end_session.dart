@@ -7,10 +7,12 @@ import '../../widgets/class_session.dart';
 
 class EndSession extends StatefulWidget {
   final List<String> students;
+  final VoidCallback onEnded;
 
   const EndSession({
     super.key,
     required this.students,
+    required this.onEnded,
   });
 
   @override
@@ -18,6 +20,14 @@ class EndSession extends StatefulWidget {
 }
 
 class _EndSessionState extends State<EndSession> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   bool viewAllList = false;
 
   Future<void> _confirmEndSession() async {
@@ -73,14 +83,13 @@ class _EndSessionState extends State<EndSession> {
     );
 
     if (confirm == true) {
-      if (_ending) return; // prevent double trigger
+      if (_ending) return;
       setState(() => _ending = true);
 
-      // optional delay (simulate ending session / saving to DB)
       await Future.delayed(const Duration(milliseconds: 1000));
 
       if (!mounted) return;
-      Navigator.pop(context, 'ended'); // ✅ return result to Dashboard
+      widget.onEnded(); // ✅ updates dashboard + ClassSession will pop
     }
   }
 
@@ -259,17 +268,17 @@ class _EndSessionState extends State<EndSession> {
                     ),
                   ),
 
-                  SizedBox(height: 20,),
+                  SizedBox(height: 10,),
 
                   // Attendance
                   Container(
                     width: 350,
                     child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
                         Container(
-                          width: 100,
-                          height: 100,
+                          width: 90,
+                          height: 90,
                           decoration: BoxDecoration(
                             borderRadius: BorderRadiusGeometry.circular(8),
                             color: Colors.white,
@@ -301,9 +310,8 @@ class _EndSessionState extends State<EndSession> {
                           ),
                         ),
                         Container(
-                          width: 100,
-                          height: 100,
-                          padding: EdgeInsets.all(20),
+                          width: 90,
+                          height: 90,
                           decoration: BoxDecoration(
                             borderRadius: BorderRadiusGeometry.circular(8),
                             color: Colors.white,
@@ -322,7 +330,7 @@ class _EndSessionState extends State<EndSession> {
                               Text(
                                 '39',
                                 style: TextStyle(
-                                    fontSize: 30
+                                    fontSize: 28
                                 ),
                               ),
                               Text(
@@ -335,8 +343,8 @@ class _EndSessionState extends State<EndSession> {
                           ),
                         ),
                         Container(
-                          width: 100,
-                          height: 100,
+                          width: 90,
+                          height: 90,
                           decoration: BoxDecoration(
                             borderRadius: BorderRadiusGeometry.circular(8),
                             color: Colors.white,
@@ -403,12 +411,19 @@ class _EndSessionState extends State<EndSession> {
                           color: Colors.black,
                         ),
                         SizedBox(
-                          height: 100,
-                          child: ListView.builder(
-                            itemCount: widget.students.length,
-                            itemBuilder: (context, index) {
-                              return student(widget.students[index]);
-                            },
+                          height: 110,
+                          child: Scrollbar(
+                            controller: _scrollController,
+                            thumbVisibility: true, // always show scrollbar
+                            radius: const Radius.circular(8),
+                            thickness: 4,
+                            child: ListView.builder(
+                              controller: _scrollController,
+                              itemCount: widget.students.length,
+                              itemBuilder: (context, index) {
+                                return student(widget.students[index]);
+                              },
+                            ),
                           ),
                         ),
                       ],

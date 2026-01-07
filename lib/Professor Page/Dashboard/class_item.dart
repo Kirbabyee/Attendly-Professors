@@ -6,7 +6,7 @@ class ClassItem {
   final String sched;
   final String session;
 
-  ClassItem({
+  const ClassItem({
     required this.course,
     required this.classCode,
     required this.professor,
@@ -14,4 +14,22 @@ class ClassItem {
     required this.sched,
     required this.session,
   });
+
+  ClassItem copyWith({
+    String? course,
+    String? classCode,
+    String? professor,
+    String? room,
+    String? sched,
+    String? session,
+  }) {
+    return ClassItem(
+      course: course ?? this.course,
+      classCode: classCode ?? this.classCode,
+      professor: professor ?? this.professor,
+      room: room ?? this.room,
+      sched: sched ?? this.sched,
+      session: session ?? this.session,
+    );
+  }
 }

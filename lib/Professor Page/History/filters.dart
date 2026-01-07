@@ -325,9 +325,9 @@ class _DataFilterState extends State<DataFilter> {
                                   color: Colors.white,
                                 ),
                                 label: Text(
-                                  'Export',
+                                  'Export CSV',
                                   style: TextStyle(
-                                    fontSize: 11,
+                                    fontSize: 10,
                                     color: Colors.white
                                   ),
                                 ),

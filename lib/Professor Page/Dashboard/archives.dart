@@ -139,27 +139,56 @@ class _ArchivesState extends State<Archives> {
     );
   }
 
-  Future<bool> _confirmArchive() async { // Archive confirmation modal
+  Future<bool> _confirmArchive() async {
     final result = await showDialog<bool>(
       context: context,
       barrierDismissible: true,
       builder: (context) {
+        final w = MediaQuery.of(context).size.width;
+
         return AlertDialog(
           backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24), // smaller dialog width
+          contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 8), // tighter inside
+          titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+          actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+
+          title: const Text(
+            'Restore this class?',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
           ),
-          title: const Text('Restore this class?'),
+          content: const Text(
+            'This class will be moved back to the classes.',
+            style: TextStyle(fontSize: 13),
+          ),
+
+          actionsAlignment: MainAxisAlignment.end,
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('No'),
+            SizedBox(
+              height: 36,
+              child: TextButton(
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
             ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text(
-                'Yes',
-                style: TextStyle(color: Colors.red),
+            SizedBox(
+              height: 36,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Color(0xFF004280),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  elevation: 0,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Restore', style: TextStyle(color: Colors.white)),
               ),
             ),
           ],
@@ -169,6 +198,7 @@ class _ArchivesState extends State<Archives> {
 
     return result ?? false;
   }
+
 
   @override
   Widget build(BuildContext context) {

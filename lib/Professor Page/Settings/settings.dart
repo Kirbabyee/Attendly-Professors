@@ -589,7 +589,6 @@ class _SettingsState extends State<Settings> {
                         );
                       },
 
-
                       icon: Icon(Icons.logout_outlined, color: Colors.red),
                       label: Text('Sign Out', style: TextStyle(color: Colors.red)),
                     ),
