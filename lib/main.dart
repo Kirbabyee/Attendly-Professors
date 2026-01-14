@@ -1,32 +1,54 @@
 
 import 'package:flutter/material.dart';
+import 'package:professor/Professor%20Page/mainshell.dart';
 import 'package:professor/Professor%20Page/new_password.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'Professor Page/History/history.dart';
 import 'Professor Page/Settings/account_information.dart';
 import 'Professor Page/Settings/change_password.dart';
 import 'Professor Page/Settings/settings.dart';
+import 'Professor Page/auth_gate.dart';
 import 'Professor Page/forgot_password.dart';
 import 'Professor Page/login.dart';
 
-void main() {
-  runApp(MaterialApp(
-    theme: ThemeData(
-      fontFamily: 'Montserrat',
-      scaffoldBackgroundColor: const Color(0xFFEAF5FB),
-    ),
-    initialRoute: '/home',
-    routes: { // Pages routing
-      '/home': (context) => LandingPage(),
-      '/login': (context) => Login(),
-      '/history': (context) => History(),
-      '/settings': (context) => Settings(),
-      '/account_information': (context) => AccountInformation(),
-      '/change_password': (context) => ChangePassword(),
-      '/forgot_password': (context) => ForgotPassword(),
-      '/new_password': (context) => NewPassword(),
-    },
-  )); // MaterialApp
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await Supabase.initialize(
+    url: 'https://ucfundmbawljngzowzgd.supabase.co',
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjZnVuZG1iYXdsam5nem93emdkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc1OTY5NDQsImV4cCI6MjA4MzE3Mjk0NH0.rPcB5ZIHZ77hR2DzXHKwJp8nF-IJH-bmICzioCma5Bk',
+  );
+
+  runApp(const MyApp());
+}
+
+// optional shortcut access anywhere
+final supabase = Supabase.instance.client;
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      theme: ThemeData(
+        fontFamily: 'Montserrat',
+        scaffoldBackgroundColor: const Color(0xFFEAF5FB),
+      ),
+      home: const AuthGate(), // ✅ ito na root
+      routes: {
+        '/login': (context) => Login(),
+        '/history': (context) => History(),
+        '/settings': (context) => Settings(),
+        '/account_information': (context) => AccountInformation(),
+        '/change_password': (context) => ChangePassword(),
+        '/forgot_password': (context) => ForgotPassword(),
+        '/new_password': (context) => NewPassword(),
+        '/mainshell': (context) => Mainshell(),
+      },
+    );
+  }
 }
 
 class LandingPage extends StatelessWidget {

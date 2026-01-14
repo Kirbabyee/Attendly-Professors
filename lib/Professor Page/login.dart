@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:professor/Professor%20Page/professor_session.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../main.dart';
 import 'mainshell.dart';
 
 class Login extends StatefulWidget {
@@ -11,7 +14,6 @@ class Login extends StatefulWidget {
 }
 
 class _LoginState extends State<Login> {
-
   String? emailValidator(String? value) {
     final email = value?.trim() ?? '';
 
@@ -27,15 +29,17 @@ class _LoginState extends State<Login> {
   bool showPassword = true;
   final _formKey = GlobalKey<FormState>();
 
-  final _studentNoController = TextEditingController();
+  final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
   @override
   void dispose() {
-    _studentNoController.dispose();
+    _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
+
+  String? _loginError;
 
   @override
   Widget build(BuildContext context) {
@@ -112,11 +116,17 @@ class _LoginState extends State<Login> {
                           height: screenHeight > 370 ? 55 : 48,
                           width: 300,
                           child: TextFormField( // Input box
-                            controller: _studentNoController,
+                            controller: _emailController,
                             style: TextStyle(fontSize: 14),
+                            onChanged: (_) {
+                              if (_loginError != null) {
+                                setState(() => _loginError = null);
+                              }
+                            },
                             keyboardType: TextInputType.emailAddress,
                             decoration: InputDecoration(
                               errorMaxLines: 1,
+                              errorText: _loginError,
                               errorStyle: TextStyle(
                                 fontSize: 10,
                                 height: 1,
@@ -269,48 +279,101 @@ class _LoginState extends State<Login> {
                             borderRadius: BorderRadiusGeometry.circular(6)
                         )
                       ),
-                      onPressed: () async {
-                        if (!_formKey.currentState!.validate()) return;
+                        onPressed: () async {
+                          if (!_formKey.currentState!.validate()) return;
 
-                        // Show loading
-                        showDialog(
-                          context: context,
-                          barrierDismissible: false,
-                          builder: (_) {
-                            return Dialog(
-                              backgroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              child: Padding(
-                                padding: const EdgeInsets.all(18),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: const [
-                                    SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(strokeWidth: 2),
-                                    ),
-                                    SizedBox(width: 12),
-                                    Text('Signing in...'),
-                                  ],
+                          setState(() {
+                            _loginError = null;
+                          });
+
+                          // Show loading
+                          showDialog(
+                            context: context,
+                            barrierDismissible: false,
+                            builder: (_) {
+                              return Dialog(
+                                backgroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(18),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: const [
+                                      SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      ),
+                                      SizedBox(width: 12),
+                                      Text('Signing in...'),
+                                    ],
+                                  ),
                                 ),
-                              ),
+                              );
+                            },
+                          );
+
+                          try {
+                            final email = _emailController.text.trim().toLowerCase();
+                            final password = _passwordController.text;
+
+                            final res = await supabase.auth.signInWithPassword(
+                              email: email,
+                              password: password,
                             );
-                          },
-                        );
 
-                        // ✅ your real login goes here (Firebase signIn, etc.)
-                        await Future.delayed(const Duration(milliseconds: 3000));
+                            final uid = res.user?.id;
+                            if (uid == null) {
+                              throw Exception("User has no data");
+                            }
 
-                        if (!mounted) return;
+                            // To check if the account is for student
+                            final studentRow = await supabase
+                                .from('professors')
+                                .select('id')
+                                .eq('id', uid)
+                                .maybeSingle();
 
-                        Navigator.pop(context); // close loading
+                            if (studentRow == null) {
+                              // Block login if no returns, means not a student account
+                              await supabase.auth.signOut();
+                              if (!mounted) return;
+                              Navigator.pop(context); // close loading
 
-                        Navigator.of(context).pushReplacement(
-                          MaterialPageRoute(builder: (_) => const Mainshell()),
-                        );
-                      },
+                              setState(() {
+                                _loginError = 'This account is not allowed in the Student app.';
+                              });
+                              _formKey.currentState!.validate();
+                              return;
+                            }
+
+                            ProfessorSession.clear();
+                            await ProfessorSession.get(force: true);
+
+                            if (!mounted) return;
+                            Navigator.pop(context);
+                            Navigator.of(context).pushNamedAndRemoveUntil('/mainshell', (route) => false);
+                          } on AuthException catch (e) {
+                            if (!mounted) return;
+                            Navigator.pop(context);
+
+                            final msg = e.message.toLowerCase();
+
+                            setState(() {
+                              _loginError = 'Invalid email or password';
+                            });
+
+                            // force redraw + show red text immediately
+                            _formKey.currentState!.validate();
+                          } catch (e) {
+                            if (!mounted) return;
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Login failed. $e')),
+                            );
+                          }
+                        },
                       child: Text(
                         'Sign In',
                         style: TextStyle(

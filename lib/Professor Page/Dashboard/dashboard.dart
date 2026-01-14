@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:professor/Professor%20Page/attendance/class_session.dart';
 
+import '../professor_session.dart';
 import 'archives.dart';
 import 'class_item.dart';
 import 'create_class.dart';
@@ -143,6 +144,9 @@ class _DashboardState extends State<Dashboard> {
     return hour * 60 + minute;
   }
 
+  Map<String, dynamic>? _prof;
+  bool _loadingProf = true;
+  String? _profErr;
 
   @override
   void initState() {
@@ -150,6 +154,29 @@ class _DashboardState extends State<Dashboard> {
     _sortClasses();
     unRead = widget.unRead;
     _sortClasses();
+    _loadProfessor();
+  }
+
+  Future<void> _loadProfessor() async {
+    setState(() {
+      _loadingProf = true;
+      _profErr = null;
+    });
+
+    try {
+      final p = await ProfessorSession.get(force: true);
+      if (!mounted) return;
+      setState(() {
+        _prof = p;
+        _loadingProf = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _profErr = e.toString();
+        _loadingProf = false;
+      });
+    }
   }
 
   Widget textBold(tag, name, double screenHeight) {
@@ -459,6 +486,12 @@ class _DashboardState extends State<Dashboard> {
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
     print(screenWidth);
+
+    final displayName = (_prof?['professor_name'] ??
+        'Professor') as String;
+
+    final firstName = displayName.trim().split(' ').first;
+
     return Scaffold(
       key: _scaffoldKey,
       endDrawer: NotificationsDrawer(
@@ -528,7 +561,7 @@ class _DashboardState extends State<Dashboard> {
                               )
                             ),
                             Text(
-                              'Leviticio!',
+                              _loadingProf ? 'Loading...' : '$firstName!',
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: screenHeight > 700 ? 30 : 25,
