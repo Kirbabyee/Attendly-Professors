@@ -285,7 +285,7 @@ class _ArchivesState extends State<Archives> {
 
                   return classCard(
                     c.course,
-                    c.classCode,
+                    c.courseCode,
                     c.professor,
                     c.room,
                     c.sched,

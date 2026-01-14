@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:professor/Professor%20Page/attendance/class_session.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../attendance/start_session.dart';
 import '../professor_session.dart';
 import 'archives.dart';
 import 'class_item.dart';
@@ -23,6 +27,51 @@ class Dashboard extends StatefulWidget {
 
 
 class _DashboardState extends State<Dashboard> {
+  Timer? _tick;
+
+  Future<void> _loadClasses() async {
+    try {
+      final uid = Supabase.instance.client.auth.currentUser?.id;
+      if (uid == null) return;
+
+      final rows = await Supabase.instance.client
+          .from('classes')
+          .select('id, course, course_code, class_code, room, schedule, archived')
+          .eq('professor_id', uid)
+          .eq('archived', false)
+          .order('created_at', ascending: false);
+
+      final list = (rows as List).map((r) {
+        final m = r as Map<String, dynamic>;
+        final sched = (m['schedule'] ?? '') as String;
+        return ClassItem(
+          id: m['id'] as String,
+          classCode: (m['class_code'] ?? '') as String,
+          course: (m['course'] ?? '') as String,
+          courseCode: (m['course_code'] ?? '') as String,
+          professor: _prof?['professor_name'] ?? 'Professor',
+          room: (m['room'] ?? '') as String,
+          sched: (m['schedule'] ?? '') as String,
+          session: _sessionFromSched(sched),
+        );
+      }).toList();
+
+      if (!mounted) return;
+      setState(() {
+        _classes
+          ..clear()
+          ..addAll(list);
+        _sortClasses();
+      });
+    } catch (e) {
+      // optional: show snackbar
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to load classes: $e')),
+      );
+    }
+  }
+
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   final students = <String>[
@@ -37,32 +86,7 @@ class _DashboardState extends State<Dashboard> {
     'Tony Stark',
   ];
 
-  final List<ClassItem> _classes = [
-    ClassItem(
-      course: 'Introduction to Human Computer Interaction',
-      classCode: 'CCS101',
-      professor: 'Mr. Leviticio Dowell',
-      room: 'Room 301',
-      sched: 'Monday: 9:00 AM - 11:00 AM',
-      session: 'Pending',
-    ),
-    ClassItem(
-      course: 'Information Assurance and Security 2',
-      classCode: 'IT 108',
-      professor: 'Mr. Leviticio Dowell',
-      room: 'Room 303',
-      sched: 'Thursday: 4:30 PM - 7:30 PM',
-      session: 'Upcoming',
-    ),
-    ClassItem(
-      course: 'Software Engineering 1',
-      classCode: 'IT 101',
-      professor: 'Mr. Leviticio Dowell',
-      room: 'Room 301',
-      sched: 'Wednesday: 2:00 PM - 5:00 PM',
-      session: 'Upcoming',
-    ),
-  ];
+  final List<ClassItem> _classes = [];
 
   final List<ClassItem> _archivedClasses = [];
 
@@ -114,14 +138,28 @@ class _DashboardState extends State<Dashboard> {
   }
 
   int _startMinutesFromSched(String sched) {
-    // Get "9:00 AM" from "Monday: 9:00 AM - 11:00 AM"
+    // Example: "Wednesday: 02:10 PM - 03:00 PM" or "Wednesday: 02:10 PM – 03:00 PM"
     final parts = sched.split(':');
     if (parts.length < 2) return 9999;
 
-    final timePart = parts.sublist(1).join(':').trim(); // in case course has ":" etc
-    final startStr = timePart.split('-').first.trim();  // "9:00 AM"
+    final timePart = parts.sublist(1).join(':').trim(); // "02:10 PM - 03:00 PM"
+    final range = timePart.split(RegExp(r'\s*[-–]\s*')); // ✅ handles "-" and "–"
+    if (range.length < 2) return 9999;
 
+    final startStr = range.first.trim(); // "02:10 PM"
     return _toMinutes(startStr);
+  }
+
+  int _endMinutesFromSched(String sched) {
+    final parts = sched.split(':');
+    if (parts.length < 2) return 9999;
+
+    final timePart = parts.sublist(1).join(':').trim();
+    final range = timePart.split(RegExp(r'\s*[-–]\s*')); // ✅ handles "-" and "–"
+    if (range.length < 2) return 9999;
+
+    final endStr = range.last.trim(); // "03:00 PM"
+    return _toMinutes(endStr);
   }
 
   int _toMinutes(String time) {
@@ -144,6 +182,45 @@ class _DashboardState extends State<Dashboard> {
     return hour * 60 + minute;
   }
 
+  String _sessionFromSched(String sched) {
+    final now = DateTime.now();
+
+    final day = sched.split(':').first.trim().toLowerCase();
+    final today = _dayName(now.weekday);
+
+    final startMin = _startMinutesFromSched(sched);
+    final endMin = _endMinutesFromSched(sched);
+    final nowMin = now.hour * 60 + now.minute;
+
+    if (day != today) return 'Upcoming';
+
+    if (startMin == 9999 || endMin == 9999) return 'Upcoming';
+
+    final pendingWindowStart = startMin - 120; // 2 hrs before start
+
+    // after class
+    if (nowMin >= endMin) return 'Ended';
+
+    // pending: 2 hrs before start hanggang before end
+    if (nowMin >= pendingWindowStart) return 'Pending';
+
+    // too early pa
+    return 'Upcoming';
+  }
+
+  String _dayName(int weekday) {
+    switch (weekday) {
+      case DateTime.monday: return 'monday';
+      case DateTime.tuesday: return 'tuesday';
+      case DateTime.wednesday: return 'wednesday';
+      case DateTime.thursday: return 'thursday';
+      case DateTime.friday: return 'friday';
+      case DateTime.saturday: return 'saturday';
+      case DateTime.sunday: return 'sunday';
+      default: return '';
+    }
+  }
+
   Map<String, dynamic>? _prof;
   bool _loadingProf = true;
   String? _profErr;
@@ -154,7 +231,23 @@ class _DashboardState extends State<Dashboard> {
     _sortClasses();
     unRead = widget.unRead;
     _sortClasses();
-    _loadProfessor();
+    _loadProfessor().then((_) => _loadClasses());
+    _tick = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (!mounted) return;
+      setState(() {
+        for (var i = 0; i < _classes.length; i++) {
+          final c = _classes[i];
+          _classes[i] = c.copyWith(session: _sessionFromSched(c.sched));
+        }
+        _sortClasses();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadProfessor() async {
@@ -195,8 +288,11 @@ class _DashboardState extends State<Dashboard> {
   }
 
   // Classcard Template
-  Widget classCard(String course,
+  Widget classCard(
+      String id,
+      String course,
       String classCode,
+      String courseCode,
       String professor,
       String room,
       String sched,
@@ -245,7 +341,7 @@ class _DashboardState extends State<Dashboard> {
                         ),
                       ),
                       SizedBox(height: 5,),
-                      Text(classCode),
+                      Text(courseCode),
                       SizedBox(height: 10,),
                     ],
                   ),
@@ -260,7 +356,7 @@ class _DashboardState extends State<Dashboard> {
                             students: students,
                             onSessionStarted: () {
                               setState(() {
-                                final idx = _classes.indexWhere((c) => c.classCode == classCode);
+                                final idx = _classes.indexWhere((c) => c.id == id);
                                 if (idx != -1) {
                                   final old = _classes[idx];
                                   _classes[idx] = old.copyWith(session: 'Session Started');
@@ -270,7 +366,7 @@ class _DashboardState extends State<Dashboard> {
                             },
                             onSessionEnded: () {
                               setState(() {
-                                final idx = _classes.indexWhere((c) => c.classCode == classCode);
+                                final idx = _classes.indexWhere((c) => c.id == id);
                                 if (idx != -1) {
                                   final old = _classes[idx];
                                   _classes[idx] = old.copyWith(session: 'Ended');
@@ -389,8 +485,10 @@ class _DashboardState extends State<Dashboard> {
                           backgroundColor: Colors.transparent,
                           builder: (_) => CreateClassSheet(
                             initialItem: ClassItem(
-                              course: course,
+                              id: id,
                               classCode: classCode,
+                              course: course,
+                              courseCode: courseCode,
                               professor: professor,
                               room: room,
                               sched: sched,
@@ -400,12 +498,8 @@ class _DashboardState extends State<Dashboard> {
                         );
 
                         if (updated != null) {
-                          setState(() {
-                            final idx = _classes.indexWhere((c) => c.classCode == classCode);
-                            if (idx != -1) {
-                              _classes[idx] = updated;
-                              _sortClasses();
-                            }
+                          await _showBlockingLoaderWhile(() async {
+                            await _loadClasses(); // refresh from DB para consistent
                           });
                         }
                       }
@@ -485,7 +579,6 @@ class _DashboardState extends State<Dashboard> {
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
-    print(screenWidth);
 
     final displayName = (_prof?['professor_name'] ??
         'Professor') as String;
@@ -576,22 +669,25 @@ class _DashboardState extends State<Dashboard> {
                             borderRadius: BorderRadiusGeometry.circular(8)
                           ),
                           child: IconButton(
-                            onPressed: () async {
-                              final newClass = await showModalBottomSheet<ClassItem>(
-                                context: context,
-                                isScrollControlled: true,
-                                backgroundColor: Colors.transparent,
-                                builder: (_) => const CreateClassSheet(),
-                              );
+                              onPressed: () async {
+                                final saved = await showModalBottomSheet<ClassItem>(
+                                  context: context,
+                                  isScrollControlled: true,
+                                  backgroundColor: Colors.transparent,
+                                  builder: (_) => const CreateClassSheet(),
+                                );
 
-                              if (newClass != null) {
-                                setState(() {
-                                  _classes.add(newClass);
-                                  _sortClasses();
+                                if (saved == null) return;
+
+                                await _showBlockingLoaderWhile(() async {
+                                  // optional: ensure prof loaded too
+                                  if (_prof == null) {
+                                    await _loadProfessor();
+                                  }
+                                  await _loadClasses(); // ✅ ito ang “duration” na gusto mo
                                 });
-                              }
-                            },
-                            icon: Icon(
+                              },
+                              icon: Icon(
                             CupertinoIcons.plus,
                             size: 30,
                             )
@@ -644,22 +740,37 @@ class _DashboardState extends State<Dashboard> {
                     final i = entry.key;
                     final c = entry.value;
 
+                    final profName = _loadingProf
+                        ? 'Loading...'
+                        : ((_prof?['professor_name'] as String?) ?? 'Professor');
+
                     return classCard(
+                      c.id,
                       c.course,
                       c.classCode,
-                      c.professor,
+                      c.courseCode,
+                      profName, // always updated pag dumating si _prof
                       c.room,
                       c.sched,
                       c.session,
                       screenHeight,
-                        () {
-                          setState(() {
-                            _archivedClasses.add(_classes[i]);
-                            _classes.removeAt(i);
-                            _sortClasses();
-                          });
-                        },
+                          () async {
+                        // 🔹 1. Update DB
+                        await Supabase.instance.client
+                            .from('classes')
+                            .update({'archived': true})
+                            .eq('id', c.id);
+
+                        // 🔹 2. Update UI
+                        if (!mounted) return;
+                        setState(() {
+                          _archivedClasses.add(c);
+                          _classes.removeAt(i);
+                          _sortClasses();
+                        });
+                      },
                     );
+
                   }).toList(),
                 ],
               ),
@@ -669,4 +780,32 @@ class _DashboardState extends State<Dashboard> {
       ),
     );
   }
+  Future<void> _showBlockingLoaderWhile(Future<void> Function() task) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Dialog(
+        backgroundColor: Colors.white,
+        child: Padding(
+          padding: EdgeInsets.all(18),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+              SizedBox(width: 12),
+              Text('Saving...'),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      await task();
+    } finally {
+      if (mounted) Navigator.pop(context); // close loader
+    }
+  }
 }
+
+

@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'class_item.dart';
 
@@ -13,6 +14,10 @@ class CreateClassSheet extends StatefulWidget {
 }
 
 class _CreateClassSheetState extends State<CreateClassSheet> {
+  final supabase = Supabase.instance.client;
+  bool _saving = false;
+  String? _saveError;
+
   (int, int, bool) _parseTime(String time) {
     // "9:00 AM"
     final reg = RegExp(r'^(\d{1,2}):(\d{2})\s*(AM|PM)$', caseSensitive: false);
@@ -26,22 +31,84 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
     return (hour, minute, am);
   }
 
+  // ===== Class Code Generator (Google Classroom-like) =====
+
+  // characters: avoid confusing ones (O/0, I/1)
+  static const _alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+  String _randomCode({int len = 7}) {
+    final now = DateTime.now().microsecondsSinceEpoch;
+    // simple pseudo-random using time seed (enough for app-level codes)
+    // If you want true crypto-random, we can use Random.secure() too.
+    var x = now;
+    final b = StringBuffer();
+    for (var i = 0; i < len; i++) {
+      x = (x * 1103515245 + 12345) & 0x7fffffff; // LCG
+      final idx = x % _alphabet.length;
+      b.write(_alphabet[idx]);
+    }
+    return b.toString();
+  }
+
+  Future<bool> _classCodeExists(String code) async {
+    final res = await supabase
+        .from('classes')
+        .select('id')
+        .eq('class_code', code)
+        .limit(1);
+
+    return (res as List).isNotEmpty;
+  }
+
+  Future<String> _generateUniqueClassCode() async {
+    // retry a few times in case may collision
+    for (var attempt = 0; attempt < 10; attempt++) {
+      final code = _randomCode(len: 7);
+      final exists = await _classCodeExists(code);
+      if (!exists) return code;
+    }
+    // fallback: longer code
+    for (var attempt = 0; attempt < 10; attempt++) {
+      final code = _randomCode(len: 9);
+      final exists = await _classCodeExists(code);
+      if (!exists) return code;
+    }
+    throw Exception('Could not generate unique class code. Try again.');
+  }
+
+  Future<void> _ensureAutoClassCode() async {
+    // only generate if CREATE mode and empty pa
+    if (widget.initialItem != null) return;
+    if (_classCode.text.trim().isNotEmpty) return;
+
+    try {
+      final code = await _generateUniqueClassCode();
+      if (!mounted) return;
+      setState(() {
+        _classCode.text = code; // ✅ auto-fill class_code (join code)
+      });
+    } catch (_) {
+      // optional: ignore, user can type manually
+    }
+  }
+
   @override
   void initState() {
     super.initState();
 
     final item = widget.initialItem;
     if (item != null) {
-      // NOTE: You used "course" as Year & Section in your sheet earlier,
-      // so map it correctly based on your meaning.
-      _course.text = item.course;      // if this is Year & Section in your app, swap as needed
-      _classCode.text = item.classCode;
-      _room.text = item.room;
+      // If your ClassItem.course is Course Name in your app:
+      _className.text = item.course;
 
-      // courseName field in your sheet is _className
-      _className.text = item.course; // if you want course name, you probably need a separate property
-      // If your ClassItem doesn't separate courseName vs year&section,
-      // you may want to adjust your ClassItem model later.
+      _courseCode.text = item.courseCode; // assuming ClassItem has this
+
+      // item.room is like "Room 301" -> store only "301" in input field
+      _room.text = item.room.replaceFirst(RegExp(r'^\s*Room\s+', caseSensitive: false), '').trim();
+
+      // If you have year_section in ClassItem, map it here.
+      // For now, keep using item.course if you don't have a separate field.
+      _course.text = item.course;
 
       // Parse sched: "Monday: 9:00 AM - 11:00 AM"
       _selectedDay = item.sched.split(':').first.trim();
@@ -60,21 +127,27 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
       _endMinute = end.$2;
       _endIsAm = end.$3;
     }
-  }
+    // auto-generate code for create mode
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _ensureAutoClassCode();
+    });
 
+  }
 
   final List<String> _days = const [
     'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
   ];
 
-  String? _selectedDay; // selected dropdown value
+  String? _selectedDay;
 
   final _formKey = GlobalKey<FormState>();
 
   final _className = TextEditingController();
-  final _classCode = TextEditingController();
+  final _courseCode = TextEditingController(); // manual: IT108 / CCS101 etc
+  final _classCode = TextEditingController();  // auto: join code like GClass
   final _course = TextEditingController();
   final _room = TextEditingController();
+
 
   int _startHour = 12, _startMinute = 0;
   bool _startIsAm = true;
@@ -85,12 +158,12 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
   @override
   void dispose() {
     _className.dispose();
-    _classCode.dispose();
+    _courseCode.dispose();
     _course.dispose();
     _room.dispose();
+    _classCode.dispose();
     super.dispose();
   }
-
 
   InputDecoration _input(String hint) {
     return InputDecoration(
@@ -104,12 +177,8 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
         borderSide: BorderSide.none,
       ),
       helperText: ' ',
-      helperStyle: TextStyle(
-        fontSize: 12,
-      ),
-      errorStyle: TextStyle(
-        fontSize: 10,
-      )
+      helperStyle: const TextStyle(fontSize: 12),
+      errorStyle: const TextStyle(fontSize: 10),
     );
   }
 
@@ -152,7 +221,6 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
 
     return Row(
       children: [
-        // Hour
         GestureDetector(
           onTap: () async {
             final picked = await _pickNumber(
@@ -169,7 +237,6 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
         const SizedBox(width: 8),
         const Text(':', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
         const SizedBox(width: 8),
-        // Minute
         GestureDetector(
           onTap: () async {
             final picked = await _pickNumber(
@@ -184,8 +251,6 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
           child: box(text: minute.toString().padLeft(2, '0')),
         ),
         const SizedBox(width: 10),
-
-        // AM/PM
         Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(10),
@@ -239,7 +304,7 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
   Widget build(BuildContext context) {
     final isEdit = widget.initialItem != null;
     final bottom = MediaQuery.of(context).viewInsets.bottom;
-    final screenHeight = MediaQuery.of(context).size.height;
+
     return SafeArea(
       top: false,
       child: Padding(
@@ -257,7 +322,6 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Title
                   Row(
                     children: const [
                       Icon(Icons.book_outlined, size: 20),
@@ -270,73 +334,54 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
                   ),
                   const SizedBox(height: 18),
 
-                  // Class Name
                   _label('Course Name'),
                   TextFormField(
                     controller: _className,
-                    style: TextStyle(
-                      fontSize: 12
-                    ),
+                    style: const TextStyle(fontSize: 12),
                     decoration: _input('Enter Course Name'),
                     validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
                   ),
                   const SizedBox(height: 8),
 
-                  // Class code
-                  _label('Class Code'),
+                  _label('Course Code'),
                   TextFormField(
-                    controller: _classCode,
-                    style: TextStyle(
-                        fontSize: 12
-                    ),
+                    controller: _courseCode,
+                    style: const TextStyle(fontSize: 12),
                     decoration: _input('Enter Class Code'),
                     validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
                   ),
                   const SizedBox(height: 8),
 
-                  // Course
                   _label('Year & Section'),
                   TextFormField(
                     controller: _course,
-                    style: TextStyle(
-                        fontSize: 12
-                    ),
+                    style: const TextStyle(fontSize: 12),
                     decoration: _input('Enter Year & Section'),
                     validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
                   ),
                   const SizedBox(height: 8),
 
-                  // Day (Dropdown)
                   _label('Day'),
                   DropdownButtonFormField<String>(
                     value: _selectedDay,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.black
-                    ),
+                    style: const TextStyle(fontSize: 12, color: Colors.black),
                     decoration: _input('Select Day'),
                     dropdownColor: Colors.white,
-                    items: _days
-                        .map((d) => DropdownMenuItem(value: d, child: Text(d)))
-                        .toList(),
+                    items: _days.map((d) => DropdownMenuItem(value: d, child: Text(d))).toList(),
                     onChanged: (v) => setState(() => _selectedDay = v),
                     validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
                   ),
                   const SizedBox(height: 8),
 
-                  // Room
                   _label('Room'),
                   TextFormField(
                     controller: _room,
-                    style: TextStyle(
-                        fontSize: 12
-                    ),
+                    style: const TextStyle(fontSize: 12),
                     decoration: _input('Enter Room Number'),
                     validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
                   ),
                   const SizedBox(height: 18),
 
-                  // Time Start
                   _label('Time Start'),
                   _timeRow(
                     hour: _startHour,
@@ -348,7 +393,6 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Time End
                   _label('Time End'),
                   _timeRow(
                     hour: _endHour,
@@ -361,7 +405,15 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
 
                   const SizedBox(height: 22),
 
-                  // Create button
+                  if (_saveError != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Text(
+                        _saveError!,
+                        style: const TextStyle(color: Colors.red, fontSize: 12),
+                      ),
+                    ),
+
                   Center(
                     child: SizedBox(
                       width: 180,
@@ -373,78 +425,99 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
                             borderRadius: BorderRadius.circular(10),
                           ),
                         ),
-                        onPressed: () {
+                        onPressed: () async {
                           if (!_formKey.currentState!.validate()) return;
+                          if (_saving) return;
 
-                          // Close the Create Class modal first
-                          final isEdit = widget.initialItem != null;
-
-                          Navigator.pop(
-                            context,
-                            ClassItem(
-                              course: _className.text.trim(),
-                              classCode: _classCode.text.trim().toUpperCase(),
-                              professor: widget.initialItem?.professor ?? 'Mr. Leviticio Dowell',
-                              room: 'Room ${_room.text.trim()}',
-                              sched: '${_selectedDay}: '
-                                  '${_formatTime(_startHour, _startMinute, _startIsAm)} - '
-                                  '${_formatTime(_endHour, _endMinute, _endIsAm)}',
-                              session: widget.initialItem?.session ?? 'Upcoming',
-                            ),
-                          );
-
-
-
-                          // Show success dialog after closing
-                          Future.microtask(() {
-                            showDialog(
-                              context: context,
-                              barrierDismissible: true, // tap outside closes
-                              builder: (context) {
-                                return Stack(
-                                  children: [
-                                    Positioned.fill(
-                                      child: GestureDetector(
-                                        behavior: HitTestBehavior.opaque,
-                                        onTap: () => Navigator.pop(context),
-                                      ),
-                                    ),
-
-                                    Center(
-                                      child: GestureDetector(
-                                        behavior: HitTestBehavior.opaque,
-                                        onTap: () => Navigator.pop(context),
-                                        child: Dialog(
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(16),
-                                          ),
-                                          child: Padding(
-                                            padding: const EdgeInsets.all(18),
-                                            child: Column(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: const [
-                                                Icon(Icons.check_circle, size: 60, color: Colors.green),
-                                                SizedBox(height: 12),
-                                                Text(
-                                                  'Created successfully!',
-                                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                                                ),
-                                                SizedBox(height: 8),
-                                                Text('Your class has been added.'),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                );
-                              },
-                            );
+                          setState(() {
+                            _saving = true;
+                            _saveError = null;
                           });
+
+                          try {
+                            final uid = supabase.auth.currentUser?.id;
+                            if (uid == null) throw Exception('Not logged in');
+
+                            final courseName = _className.text.trim();
+                            final courseCode = _courseCode.text.trim().toUpperCase();
+                            final yearSection = _course.text.trim().toUpperCase();
+                            final room = 'Room ${_room.text.trim()}';
+                            final day = _selectedDay!;
+                            final start = _formatTime(_startHour, _startMinute, _startIsAm);
+                            final end = _formatTime(_endHour, _endMinute, _endIsAm);
+                            final classCode  = _classCode.text.trim().toUpperCase();
+
+                            // ✅ since DB uses single string column "schedule"
+                            final schedule = '$day: $start - $end';
+
+                            Map<String, dynamic> row;
+
+                            if (isEdit) {
+                              // ✅ UPDATE
+                              row = await supabase
+                                  .from('classes')
+                                  .update({
+                                'course': courseName,
+                                'course_code': courseCode,
+                                'year_section': yearSection,
+                                'room': room,
+                                'day_of_week': day,
+                                'start_time': start,
+                                'end_time': end,
+                                'schedule': schedule,
+                              })
+                                  .eq('id', widget.initialItem!.id) // requires ClassItem.id
+                                  .select()
+                                  .single();
+                            } else {
+                              // ✅ INSERT
+                              row = await supabase
+                                  .from('classes')
+                                  .insert({
+                                'professor_id': uid,
+                                'course': courseName,
+                                'course_code': courseCode,
+                                'year_section': yearSection,
+                                'room': room,
+                                'day_of_week': day,
+                                'start_time': start,
+                                'end_time': end,
+                                'schedule': schedule,
+                                'class_code': classCode,
+                              })
+                                  .select()
+                                  .single();
+                            }
+
+                            if (!mounted) return;
+
+                            // ✅ return the saved row (correct keys)
+                            Navigator.pop(
+                              context,
+                              ClassItem(
+                                id: row['id'] as String,
+                                classCode: row['class_code'] as String,
+                                course: row['course'] as String,
+                                courseCode: row['course_code'] as String,
+                                professor: widget.initialItem?.professor ?? 'Professor',
+                                room: row['room'] as String,
+                                sched: row['schedule'] as String,
+                                session: widget.initialItem?.session ?? 'Upcoming',
+                              ),
+                            );
+                          } catch (e) {
+                            if (!mounted) return;
+                            setState(() => _saveError = e.toString());
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Failed to save class: $e')),
+                            );
+                          } finally {
+                            if (!mounted) return;
+                            setState(() => _saving = false);
+                          }
                         },
                         child: Text(
-                          isEdit ? 'Save Changes' : 'Create',
+                          _saving ? 'Saving...' : (isEdit ? 'Save Changes' : 'Create'),
                           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
                         ),
                       ),
@@ -484,7 +557,7 @@ Future<int?> _pickNumber(
                 children: [
                   Text('Select $title: $temp'),
                   Slider(
-                    thumbColor: Color(0xFF004280),
+                    thumbColor: const Color(0xFF004280),
                     activeColor: const Color(0xFF004280),
                     inactiveColor: Colors.grey.shade300,
                     value: temp.toDouble(),
@@ -506,4 +579,3 @@ Future<int?> _pickNumber(
     },
   );
 }
-

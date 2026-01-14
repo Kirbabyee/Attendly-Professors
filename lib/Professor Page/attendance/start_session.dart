@@ -4,7 +4,6 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../widgets/class_session.dart';
-import '../professor_session.dart';
 
 class StartSession extends StatefulWidget {
   final List<String> students;
@@ -22,38 +21,6 @@ class StartSession extends StatefulWidget {
 
 class _StartSessionState extends State<StartSession> {
   final ScrollController _studentScrollController = ScrollController();
-
-  Map<String, dynamic>? _prof;
-  bool _loadingProf = true;
-  String? _profErr;
-
-  Future<void> _loadProfessor() async {
-    setState(() {
-      _loadingProf = true;
-      _profErr = null;
-    });
-
-    try {
-      final p = await ProfessorSession.get(force: true);
-      if (!mounted) return;
-      setState(() {
-        _prof = p;
-        _loadingProf = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _profErr = e.toString();
-        _loadingProf = false;
-      });
-    }
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _loadProfessor();
-  }
 
   @override
   void dispose() {
