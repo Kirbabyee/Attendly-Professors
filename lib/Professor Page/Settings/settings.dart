@@ -263,8 +263,74 @@ class _SettingsState extends State<Settings> {
                         ],
                       ),
                     ),
+
                     SizedBox(height: screenHeight * .023),
 
+                    Container(
+                      width: screenWidth * .9,
+                      padding: EdgeInsets.all(screenHeight * .023),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadiusGeometry.circular(8),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.settings, size: screenHeight * .023, color: Colors.black),
+                              SizedBox(width: 10),
+                              Text(
+                                'Session Settings',
+                                style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black,
+                                    fontSize: screenHeight * .017
+                                ),
+                              )
+                            ],
+                          ),
+                          SizedBox(height: 10),
+                          Container(
+                            padding: EdgeInsets.symmetric(horizontal: screenWidth * .05, vertical: screenHeight * .005),
+                            decoration: BoxDecoration(
+                              color: Color(0x90D9D9D9),
+                              borderRadius: BorderRadiusGeometry.circular(8),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Auto-End Sessions',
+                                      style: TextStyle(fontSize: screenHeight * .014, fontWeight: FontWeight.w600),
+                                    ),
+                                    Text('End Session when class time expires', style: TextStyle(fontSize: screenHeight * .012)),
+                                  ],
+                                ),
+                                Transform.scale(
+                                  scale: screenHeight * .001,
+                                  child: Switch(
+                                    value: isOn,
+                                    onChanged: (value) {
+                                      setState(() {
+                                        isOn = value;
+                                      });
+                                    },
+                                    activeThumbColor: Colors.white,
+                                    activeTrackColor: Color(0xFF043B6F),
+                                    inactiveTrackColor: Colors.white,
+                                  ),
+                                )
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    SizedBox(height: screenHeight * .023),
                     // Security & Privacy
                     Container(
                       width: screenWidth * .9,
