@@ -15,6 +15,40 @@ class CreateClassSheet extends StatefulWidget {
 
 class _CreateClassSheetState extends State<CreateClassSheet> {
   final supabase = Supabase.instance.client;
+
+  Future<bool> _confirmSave({required bool isEdit}) async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        title: Text(isEdit ? 'Save changes?' : 'Create this class?'),
+        content: Text(
+          isEdit
+              ? 'This will update the class information.'
+              : 'This will create a new class.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.black)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF004280),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(isEdit ? 'Save' : 'Create', style: const TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    return result ?? false;
+  }
+
   bool _saving = false;
   String? _saveError;
 
@@ -98,19 +132,13 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
 
     final item = widget.initialItem;
     if (item != null) {
-      // If your ClassItem.course is Course Name in your app:
       _className.text = item.course;
+      _courseCode.text = item.courseCode;
 
-      _courseCode.text = item.courseCode; // assuming ClassItem has this
+      _room.text = item.room
+          .replaceFirst(RegExp(r'^\s*Room\s+', caseSensitive: false), '')
+          .trim();
 
-      // item.room is like "Room 301" -> store only "301" in input field
-      _room.text = item.room.replaceFirst(RegExp(r'^\s*Room\s+', caseSensitive: false), '').trim();
-
-      // If you have year_section in ClassItem, map it here.
-      // For now, keep using item.course if you don't have a separate field.
-      _course.text = item.course;
-
-      // Parse sched: "Monday: 9:00 AM - 11:00 AM"
       _selectedDay = item.sched.split(':').first.trim();
 
       final timePart = item.sched.split(':').sublist(1).join(':').trim();
@@ -126,6 +154,22 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
       _endHour = end.$1;
       _endMinute = end.$2;
       _endIsAm = end.$3;
+
+      // ✅ DITO MO ILALAGAY (PARSE YEAR_SECTION)
+      final raw = item.yearSection ?? ''; // dapat galing DB
+
+      final text = raw.trim();
+      if (text.isNotEmpty) {
+        final m = RegExp(
+          r'^(\w+)\s+(\d)\s*[- ]\s*([A-Z])$',
+        ).firstMatch(text.toUpperCase());
+
+        if (m != null) {
+          _selectedProgram = m.group(1);
+          _selectedYear = m.group(2);
+          _selectedSection = m.group(3);
+        }
+      }
     }
     // auto-generate code for create mode
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -138,6 +182,20 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
     'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
   ];
 
+  final List<Map<String, String>> _programs = const [
+    {'code': 'BSIT',  'label': 'Bachelor of Science in Information Technology'},
+    {'code': 'BSCS',  'label': 'Bachelor of Science in Computer Science'},
+    {'code': 'BSIS',  'label': 'Bachelor of Science in Information System'},
+    {'code': 'BSEMC', 'label': 'Bachelor of Science in Entertainment and Multimedia Computing'},
+  ];
+
+  final List<String> _years = const ['1', '2', '3', '4'];
+  final List<String> _sections = const ['A', 'B', 'C', 'D'];
+
+  String? _selectedProgram;
+  String? _selectedYear;
+  String? _selectedSection;
+
   String? _selectedDay;
 
   final _formKey = GlobalKey<FormState>();
@@ -145,7 +203,6 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
   final _className = TextEditingController();
   final _courseCode = TextEditingController(); // manual: IT108 / CCS101 etc
   final _classCode = TextEditingController();  // auto: join code like GClass
-  final _course = TextEditingController();
   final _room = TextEditingController();
 
 
@@ -159,7 +216,6 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
   void dispose() {
     _className.dispose();
     _courseCode.dispose();
-    _course.dispose();
     _room.dispose();
     _classCode.dispose();
     super.dispose();
@@ -352,23 +408,97 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
                   ),
                   const SizedBox(height: 8),
 
-                  _label('Year & Section'),
-                  TextFormField(
-                    controller: _course,
-                    style: const TextStyle(fontSize: 12),
-                    decoration: _input('Enter Year & Section'),
-                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+                  _label('Program'),
+                  DropdownButtonFormField<String>(
+                    value: _selectedProgram,
+                    isExpanded: true,
+
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.black,
+                    ),
+
+                    decoration: InputDecoration(
+                      hintText: 'Select Program',
+                      filled: true,
+                      fillColor: const Color(0xFFEAEAEA),
+                      isDense: true, // ✅ mas maliit height
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                      hintStyle: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.black54,
+                      ),
+                      helperText: ' ',
+                      helperStyle: const TextStyle(fontSize: 12),
+                      errorStyle: const TextStyle(fontSize: 10),
+                    ),
+
+                    dropdownColor: Colors.white,
+
+                    selectedItemBuilder: (context) {
+                      return _programs.map((p) {
+                        return Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            p['code']!,
+                            style: const TextStyle(fontSize: 12),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        );
+                      }).toList();
+                    },
+
+                    items: _programs.map((p) {
+                      return DropdownMenuItem<String>(
+                        value: p['code'],
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              p['code']!,
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                            ),
+                            Text(
+                              p['label']!,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+
+                    onChanged: (v) => setState(() => _selectedProgram = v),
+                    validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
                   ),
                   const SizedBox(height: 8),
 
-                  _label('Day'),
+                  _label('Year'),
                   DropdownButtonFormField<String>(
-                    value: _selectedDay,
+                    value: _selectedYear,
                     style: const TextStyle(fontSize: 12, color: Colors.black),
-                    decoration: _input('Select Day'),
+                    decoration: _input('Select Year'),
                     dropdownColor: Colors.white,
-                    items: _days.map((d) => DropdownMenuItem(value: d, child: Text(d))).toList(),
-                    onChanged: (v) => setState(() => _selectedDay = v),
+                    items: _years.map((y) => DropdownMenuItem(value: y, child: Text(y))).toList(),
+                    onChanged: (v) => setState(() => _selectedYear = v),
+                    validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+                  ),
+                  const SizedBox(height: 8),
+
+                  _label('Section'),
+                  DropdownButtonFormField<String>(
+                    value: _selectedSection,
+                    style: const TextStyle(fontSize: 12, color: Colors.black),
+                    decoration: _input('Select Section'),
+                    dropdownColor: Colors.white,
+                    items: _sections.map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
+                    onChanged: (v) => setState(() => _selectedSection = v),
                     validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
                   ),
                   const SizedBox(height: 8),
@@ -381,6 +511,18 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
                     validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
                   ),
                   const SizedBox(height: 18),
+
+                  _label('Day'),
+                  DropdownButtonFormField<String>(
+                    value: _selectedDay,
+                    style: const TextStyle(fontSize: 12, color: Colors.black),
+                    decoration: _input('Select Day'),
+                    dropdownColor: Colors.white,
+                    items: _days.map((d) => DropdownMenuItem(value: d, child: Text(d))).toList(),
+                    onChanged: (v) => setState(() => _selectedDay = v),
+                    validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+                  ),
+                  const SizedBox(height: 8),
 
                   _label('Time Start'),
                   _timeRow(
@@ -429,6 +571,9 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
                           if (!_formKey.currentState!.validate()) return;
                           if (_saving) return;
 
+                          final ok = await _confirmSave(isEdit: isEdit);
+                          if (!ok) return;
+
                           setState(() {
                             _saving = true;
                             _saveError = null;
@@ -440,7 +585,8 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
 
                             final courseName = _className.text.trim();
                             final courseCode = _courseCode.text.trim().toUpperCase();
-                            final yearSection = _course.text.trim().toUpperCase();
+                            final yearSection =
+                                '${_selectedProgram!.toUpperCase()} ${_selectedYear!}-${_selectedSection!.toUpperCase()}';
                             final room = 'Room ${_room.text.trim()}';
                             final day = _selectedDay!;
                             final start = _formatTime(_startHour, _startMinute, _startIsAm);
@@ -496,6 +642,7 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
                               context,
                               ClassItem(
                                 id: row['id'] as String,
+                                yearSection: row['year_section'] as String, // ✅ HERE
                                 classCode: row['class_code'] as String,
                                 course: row['course'] as String,
                                 courseCode: row['course_code'] as String,

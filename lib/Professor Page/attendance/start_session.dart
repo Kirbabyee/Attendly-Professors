@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../widgets/class_session.dart';
 
@@ -11,6 +12,7 @@ class StartSession extends StatefulWidget {
 
   // ✅ add these fields
   final String courseTitle;
+  final String classId;
   final String courseCode;
   final String professor;
   final String classCode;
@@ -24,6 +26,7 @@ class StartSession extends StatefulWidget {
 
     // ✅ required para di null
     required this.courseTitle,
+    required this.classId,
     required this.courseCode,
     required this.professor,
     required this.classCode,
@@ -139,10 +142,26 @@ class _StartSessionState extends State<StartSession> {
       if (_starting) return;
       setState(() => _starting = true);
 
-      await Future.delayed(const Duration(milliseconds: 700));
+      try {
+        final supabase = Supabase.instance.client;
 
-      if (!mounted) return;
-      widget.onStarted(); // ✅ switches UI + updates dashboard
+        // ✅ create session row
+        await supabase.from('class_sessions').insert({
+          'class_id': widget.classId,
+          'started_at': DateTime.now().toIso8601String(),
+          'status': 'started',
+        });
+
+        if (!mounted) return;
+        widget.onStarted(); // ✅ update UI/dashboard
+      } catch (e) {
+        if (!mounted) return;
+        setState(() => _starting = false);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to start session: $e')),
+        );
+      }
     }
   }
 

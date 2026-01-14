@@ -2,6 +2,8 @@ import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:intl/intl.dart';
 
 import '../../widgets/class_session.dart';
 
@@ -11,6 +13,7 @@ class EndSession extends StatefulWidget {
 
   // ✅ add these fields
   final String courseTitle;
+  final String classId;
   final String courseCode;
   final String professor;
   final String classCode;
@@ -24,6 +27,7 @@ class EndSession extends StatefulWidget {
 
     // ✅ required para di null
     required this.courseTitle,
+    required this.classId,
     required this.courseCode,
     required this.professor,
     required this.classCode,
@@ -36,6 +40,41 @@ class EndSession extends StatefulWidget {
 }
 
 class _EndSessionState extends State<EndSession> {
+  DateTime? _startedAt;
+  bool _loadingSessionInfo = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSessionInfo();
+  }
+
+  Future<void> _loadSessionInfo() async {
+    try {
+      final supabase = Supabase.instance.client;
+
+      // ✅ kunin latest started session (or last session)
+      final rows = await supabase
+          .from('class_sessions')
+          .select('started_at, status')
+          .eq('class_id', widget.classId)
+          .order('started_at', ascending: false)
+          .limit(1);
+
+      if (rows is List && rows.isNotEmpty) {
+        final startedAtStr = rows.first['started_at'] as String?;
+        if (startedAtStr != null) {
+          _startedAt = DateTime.parse(startedAtStr);
+        }
+      }
+    } catch (_) {
+      // ignore, fallback sa UI
+    } finally {
+      if (!mounted) return;
+      setState(() => _loadingSessionInfo = false);
+    }
+  }
+
   final ScrollController _scrollController = ScrollController();
 
   @override
@@ -102,10 +141,29 @@ class _EndSessionState extends State<EndSession> {
       if (_ending) return;
       setState(() => _ending = true);
 
-      await Future.delayed(const Duration(milliseconds: 1000));
+      try {
+        final supabase = Supabase.instance.client;
 
-      if (!mounted) return;
-      widget.onEnded(); // ✅ updates dashboard + ClassSession will pop
+        // ✅ end the active session for this class
+        await supabase
+            .from('class_sessions')
+            .update({
+          'status': 'ended',
+          'ended_at': DateTime.now().toIso8601String(),
+        })
+            .eq('class_id', widget.classId)
+            .eq('status', 'started');
+
+        if (!mounted) return;
+        widget.onEnded(); // ✅ pop back via ClassSession
+      } catch (e) {
+        if (!mounted) return;
+        setState(() => _ending = false);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to end session: $e')),
+        );
+      }
     }
   }
 
@@ -240,12 +298,16 @@ class _EndSessionState extends State<EndSession> {
                               ),
                               SizedBox(width: 5,),
                               Text(
-                                'Session Started at 5:58 PM',
+                                _loadingSessionInfo
+                                    ? 'Loading session time...'
+                                    : _startedAt == null
+                                    ? 'Session Started'
+                                    : 'Session Started at ${DateFormat('h:mm a').format(_startedAt!.toUtc())}',
                                 style: TextStyle(
                                   fontSize: 11,
-                                  color: Color(0xFF043B6F)
+                                  color: Color(0xFF043B6F),
                                 ),
-                              )
+                              ),
                             ],
                           ),
                         ),

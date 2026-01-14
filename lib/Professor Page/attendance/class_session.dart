@@ -13,12 +13,14 @@ class ClassSession extends StatefulWidget {
   final String classCode;
   final String room;
   final String sched;
+  final String classId;
 
   final VoidCallback? onSessionStarted;
   final VoidCallback? onSessionEnded;
 
   const ClassSession({
     super.key,
+    required this.classId,
     required this.session,
     required this.students,
 
@@ -74,6 +76,7 @@ class _ClassSessionState extends State<ClassSession> {
           onStarted: _handleStarted,
 
           // ✅ pass data
+          classId: widget.classId,
           courseTitle: widget.courseTitle,
           courseCode: widget.courseCode,
           professor: widget.professor,
@@ -86,6 +89,7 @@ class _ClassSessionState extends State<ClassSession> {
           onEnded: _handleEnded,
 
           // ✅ pass data
+          classId: widget.classId,
           courseTitle: widget.courseTitle,
           courseCode: widget.courseCode,
           professor: widget.professor,

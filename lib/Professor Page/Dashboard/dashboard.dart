@@ -36,23 +36,56 @@ class _DashboardState extends State<Dashboard> {
 
       final rows = await Supabase.instance.client
           .from('classes')
-          .select('id, course, course_code, class_code, room, schedule, archived')
+          .select('id, course, course_code, class_code, room, schedule, year_section, archived')
           .eq('professor_id', uid)
           .eq('archived', false)
           .order('created_at', ascending: false);
 
+      final classIds = (rows as List)
+          .map((r) => (r as Map<String, dynamic>)['id'] as String)
+          .toList();
+
+      final startedRows = await Supabase.instance.client
+          .from('class_sessions')
+          .select('class_id')
+          .inFilter('class_id', classIds)
+          .eq('status', 'started');
+
+      final startedSet = (startedRows as List)
+          .map((s) => (s as Map<String, dynamic>)['class_id'] as String)
+          .toSet();
+
+      final endedRows = await Supabase.instance.client
+          .from('class_sessions')
+          .select('class_id')
+          .inFilter('class_id', classIds)
+          .eq('status', 'ended');
+
+      final endedSet = (endedRows as List)
+          .map((s) => (s as Map<String, dynamic>)['class_id'] as String)
+          .toSet();
+
       final list = (rows as List).map((r) {
         final m = r as Map<String, dynamic>;
         final sched = (m['schedule'] ?? '') as String;
+        final classId = m['id'] as String;
+
+        final sessionText = startedSet.contains(classId)
+            ? 'Session Started'
+            : endedSet.contains(classId)
+            ? 'Ended'
+            : _sessionFromSched(sched);
+
         return ClassItem(
-          id: m['id'] as String,
+          id: classId,
           classCode: (m['class_code'] ?? '') as String,
           course: (m['course'] ?? '') as String,
           courseCode: (m['course_code'] ?? '') as String,
           professor: _prof?['professor_name'] ?? 'Professor',
           room: (m['room'] ?? '') as String,
           sched: (m['schedule'] ?? '') as String,
-          session: _sessionFromSched(sched),
+          session: sessionText,
+          yearSection: (m['year_section'] ?? '') as String, // ✅ HERE
         );
       }).toList();
 
@@ -207,40 +240,56 @@ class _DashboardState extends State<Dashboard> {
   String _sessionFromSched(String sched) {
     final now = DateTime.now();
 
-    final day = sched.split(':').first.trim().toLowerCase();
-    final today = _dayName(now.weekday);
+    final dayStr = sched.split(':').first.trim().toLowerCase();
 
     final startMin = _startMinutesFromSched(sched);
-    final endMin = _endMinutesFromSched(sched);
+    final endMinRaw = _endMinutesFromSched(sched);
     final nowMin = now.hour * 60 + now.minute;
 
-    if (day != today) return 'Upcoming';
+    if (startMin == 9999 || endMinRaw == 9999) return 'Upcoming';
 
-    if (startMin == 9999 || endMin == 9999) return 'Upcoming';
+    const map = {
+      'sunday': DateTime.sunday,
+      'monday': DateTime.monday,
+      'tuesday': DateTime.tuesday,
+      'wednesday': DateTime.wednesday,
+      'thursday': DateTime.thursday,
+      'friday': DateTime.friday,
+      'saturday': DateTime.saturday,
+    };
 
-    final pendingWindowStart = startMin - 120; // 2 hrs before start
+    final schedWeekday = map[dayStr];
+    if (schedWeekday == null) return 'Upcoming';
 
-    // after class
-    if (nowMin >= endMin) return 'Ended';
+    int prevDay(int d) => d == DateTime.monday ? DateTime.sunday : d - 1;
+    int nextDay(int d) => d == DateTime.sunday ? DateTime.monday : d + 1;
 
-    // pending: 2 hrs before start hanggang before end
-    if (nowMin >= pendingWindowStart) return 'Pending';
+    // ✅ detect overnight (ex: 11:30 PM - 12:59 AM)
+    final overnight = endMinRaw <= startMin;
+    final endMin = overnight ? endMinRaw + 1440 : endMinRaw;
 
-    // too early pa
-    return 'Upcoming';
-  }
+    // ✅ pending window (can be negative if start is 12:00 AM)
+    final pendingWindowStart = startMin - 120;
 
-  String _dayName(int weekday) {
-    switch (weekday) {
-      case DateTime.monday: return 'monday';
-      case DateTime.tuesday: return 'tuesday';
-      case DateTime.wednesday: return 'wednesday';
-      case DateTime.thursday: return 'thursday';
-      case DateTime.friday: return 'friday';
-      case DateTime.saturday: return 'saturday';
-      case DateTime.sunday: return 'sunday';
-      default: return '';
+    // ✅ place "now" on the same timeline as the schedule
+    int? nowAdj;
+
+    if (now.weekday == schedWeekday) {
+      // same day as schedule start
+      nowAdj = nowMin;
+    } else if (pendingWindowStart < 0 && now.weekday == prevDay(schedWeekday)) {
+      // ✅ pending window spills to previous day (ex: 12:00 AM start)
+      nowAdj = nowMin - 1440;
+    } else if (overnight && now.weekday == nextDay(schedWeekday)) {
+      // overnight continuation day
+      nowAdj = nowMin + 1440;
+    } else {
+      return 'Upcoming';
     }
+
+    if (nowAdj >= endMin) return 'Ended';
+    if (nowAdj >= pendingWindowStart) return 'Pending';
+    return 'Upcoming';
   }
 
   Map<String, dynamic>? _prof;
@@ -250,19 +299,15 @@ class _DashboardState extends State<Dashboard> {
   @override
   void initState() {
     super.initState();
-    _sortClasses();
+
     unRead = widget.unRead;
-    _sortClasses();
+
     _loadProfessor().then((_) => _loadClasses());
-    _tick = Timer.periodic(const Duration(minutes: 1), (_) {
+
+    // ✅ DB is the single source of truth
+    _tick = Timer.periodic(const Duration(minutes: 1), (_) async {
       if (!mounted) return;
-      setState(() {
-        for (var i = 0; i < _classes.length; i++) {
-          final c = _classes[i];
-          _classes[i] = c.copyWith(session: _sessionFromSched(c.sched));
-        }
-        _sortClasses();
-      });
+      await _loadClasses();
     });
   }
 
@@ -312,6 +357,7 @@ class _DashboardState extends State<Dashboard> {
   // Classcard Template
   Widget classCard(
       String id,
+      String yearSection,
       String course,
       String classCode,
       String courseCode,
@@ -324,6 +370,7 @@ class _DashboardState extends State<Dashboard> {
     ) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isUpcoming = session == 'Upcoming' || session == 'Ended';
+
     return Opacity(
       opacity: isUpcoming ? 0.5 : 1.0,
       child: Container(
@@ -364,6 +411,8 @@ class _DashboardState extends State<Dashboard> {
                       ),
                       SizedBox(height: 5,),
                       Text(courseCode),
+                      SizedBox(height: 8,),
+                      Text(yearSection, style: TextStyle(fontSize: 10),),
                       SizedBox(height: 10,),
                     ],
                   ),
@@ -376,26 +425,13 @@ class _DashboardState extends State<Dashboard> {
                           builder: (_) => ClassSession(
                             session: session,
                             students: students,
-                            onSessionStarted: () {
-                              setState(() {
-                                final idx = _classes.indexWhere((c) => c.id == id);
-                                if (idx != -1) {
-                                  final old = _classes[idx];
-                                  _classes[idx] = old.copyWith(session: 'Session Started');
-                                  _sortClasses();
-                                }
-                              });
+                            onSessionStarted: () async {
+                              await _loadClasses();
                             },
-                            onSessionEnded: () {
-                              setState(() {
-                              final idx = _classes.indexWhere((c) => c.id == id);
-                                if (idx != -1) {
-                                  final old = _classes[idx];
-                                  _classes[idx] = old.copyWith(session: 'Ended');
-                                  _sortClasses();
-                                }
-                              });
+                            onSessionEnded: () async {
+                              await _loadClasses(); // refresh
                             },
+                            classId: id,
                             courseTitle: course,
                             courseCode: courseCode,
                             professor: professor,
@@ -405,6 +441,7 @@ class _DashboardState extends State<Dashboard> {
                           ),
                         ),
                       );
+                      await _loadClasses();
                     },
                     icon: Icon(CupertinoIcons.right_chevron, size: screenHeight > 700 ? 16 : 14),
                   )
@@ -514,6 +551,7 @@ class _DashboardState extends State<Dashboard> {
                           builder: (_) => CreateClassSheet(
                             initialItem: ClassItem(
                               id: id,
+                              yearSection: yearSection,
                               classCode: classCode,
                               course: course,
                               courseCode: courseCode,
@@ -774,6 +812,7 @@ class _DashboardState extends State<Dashboard> {
 
                     return classCard(
                       c.id,
+                      c.yearSection,
                       c.course,
                       c.classCode,
                       c.courseCode,
