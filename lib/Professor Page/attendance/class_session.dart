@@ -6,13 +6,30 @@ class ClassSession extends StatefulWidget {
   final String session;
   final List<String> students;
 
-  final VoidCallback? onSessionStarted; // update dashboard
-  final VoidCallback? onSessionEnded;   // update dashboard
+  // ✅ add these
+  final String courseTitle;
+  final String courseCode;
+  final String professor;
+  final String classCode;
+  final String room;
+  final String sched;
+
+  final VoidCallback? onSessionStarted;
+  final VoidCallback? onSessionEnded;
 
   const ClassSession({
     super.key,
     required this.session,
     required this.students,
+
+    // ✅ required
+    required this.courseTitle,
+    required this.courseCode,
+    required this.professor,
+    required this.classCode,
+    required this.room,
+    required this.sched,
+
     this.onSessionStarted,
     this.onSessionEnded,
   });
@@ -20,6 +37,7 @@ class ClassSession extends StatefulWidget {
   @override
   State<ClassSession> createState() => _ClassSessionState();
 }
+
 
 class _ClassSessionState extends State<ClassSession> {
   late String _session; // local state inside ClassSession
@@ -54,10 +72,26 @@ class _ClassSessionState extends State<ClassSession> {
             ? StartSession(
           students: widget.students,
           onStarted: _handleStarted,
+
+          // ✅ pass data
+          courseTitle: widget.courseTitle,
+          courseCode: widget.courseCode,
+          professor: widget.professor,
+          classCode: widget.classCode,
+          room: widget.room,
+          sched: widget.sched,
         )
             : EndSession(
           students: widget.students,
           onEnded: _handleEnded,
+
+          // ✅ pass data
+          courseTitle: widget.courseTitle,
+          courseCode: widget.courseCode,
+          professor: widget.professor,
+          classCode: widget.classCode,
+          room: widget.room,
+          sched: widget.sched,
         ),
       ),
     );

@@ -9,10 +9,26 @@ class EndSession extends StatefulWidget {
   final List<String> students;
   final VoidCallback onEnded;
 
+  // ✅ add these fields
+  final String courseTitle;
+  final String courseCode;
+  final String professor;
+  final String classCode;
+  final String room;
+  final String sched;
+
   const EndSession({
     super.key,
     required this.students,
     required this.onEnded,
+
+    // ✅ required para di null
+    required this.courseTitle,
+    required this.courseCode,
+    required this.professor,
+    required this.classCode,
+    required this.room,
+    required this.sched,
   });
 
   @override
@@ -151,14 +167,20 @@ class _EndSessionState extends State<EndSession> {
                 children: [
                   AttendlyBlueHeader(
                     onBack: false,
-                    courseTitle: 'Introduction to Human Computer Interaction',
-                    courseCode: 'CCS101',
-                    professor: 'Mr. Leviticio Dowell',
+                    courseTitle: widget.courseTitle,
+                    courseCode: widget.courseCode,
+                    professor: widget.professor,
                     icon: CupertinoIcons.book,
                     iconColor: const Color(0xFFFBD600),
                   ),
+
                   const SizedBox(height: 20),
-                  const ClassInfo(),
+
+                  ClassInfo(
+                    classCode: widget.classCode,
+                    room: widget.room,
+                    sched: widget.sched,
+                  ),
                   const SizedBox(height: 10),
 
                   // Back Button

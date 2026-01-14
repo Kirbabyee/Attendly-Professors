@@ -108,8 +108,8 @@ class _DashboardState extends State<Dashboard> {
       if (sessionCompare != 0) return sessionCompare;
 
       // 2) Day priority
-      final aDay = _dayRankFromSched(a.sched);
-      final bDay = _dayRankFromSched(b.sched);
+      final aDay = _daysUntilFromSched(a.sched);
+      final bDay = _daysUntilFromSched(b.sched);
       final dayCompare = aDay.compareTo(bDay);
       if (dayCompare != 0) return dayCompare;
 
@@ -135,6 +135,28 @@ class _DashboardState extends State<Dashboard> {
     };
 
     return dayRank[day] ?? 99;
+  }
+
+  int _daysUntilFromSched(String sched) {
+    final dayStr = sched.split(':').first.trim().toLowerCase();
+
+    const map = {
+      'sunday': DateTime.sunday,
+      'monday': DateTime.monday,
+      'tuesday': DateTime.tuesday,
+      'wednesday': DateTime.wednesday,
+      'thursday': DateTime.thursday,
+      'friday': DateTime.friday,
+      'saturday': DateTime.saturday,
+    };
+
+    final target = map[dayStr];
+    if (target == null) return 999;
+
+    final today = DateTime.now().weekday; // monday=1..sunday=7
+
+    // ✅ circular difference (0..6)
+    return (target - today + 7) % 7;
   }
 
   int _startMinutesFromSched(String sched) {
@@ -348,7 +370,7 @@ class _DashboardState extends State<Dashboard> {
                   session == 'Pending' || session == 'Session Started'
                       ? IconButton(
                     onPressed: () async {
-                      final result = await Navigator.push(
+                      await Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (_) => ClassSession(
@@ -366,7 +388,7 @@ class _DashboardState extends State<Dashboard> {
                             },
                             onSessionEnded: () {
                               setState(() {
-                                final idx = _classes.indexWhere((c) => c.id == id);
+                              final idx = _classes.indexWhere((c) => c.id == id);
                                 if (idx != -1) {
                                   final old = _classes[idx];
                                   _classes[idx] = old.copyWith(session: 'Ended');
@@ -374,13 +396,19 @@ class _DashboardState extends State<Dashboard> {
                                 }
                               });
                             },
+                            courseTitle: course,
+                            courseCode: courseCode,
+                            professor: professor,
+                            classCode: classCode,
+                            room: room,
+                            sched: sched,
                           ),
                         ),
                       );
                     },
                     icon: Icon(CupertinoIcons.right_chevron, size: screenHeight > 700 ? 16 : 14),
                   )
-                      : SizedBox(),
+                      : const SizedBox(),
                 ],
               ),
               Row(

@@ -125,18 +125,27 @@ class ClassInfo extends StatelessWidget {
   final double width;
   final double height;
 
+  final String classCode;
+  final String room;
+  final String sched;
+
   const ClassInfo({
+    super.key,
     this.width = 350,
     this.height = 100,
+    required this.classCode,
+    required this.room,
+    required this.sched,
   });
 
   @override
   Widget build(BuildContext context) {
-    final screenHeight = MediaQuery.of(context).size.width;
+    final screenWidth = MediaQuery.of(context).size.width;
+
     return Container(
-      width: screenHeight > 370 ? width : 320,
+      width: screenWidth > 370 ? width : 320,
       height: height,
-      padding: EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
       decoration: BoxDecoration(
         boxShadow: const [
           BoxShadow(
@@ -152,69 +161,42 @@ class ClassInfo extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          Row(
+            children: [
+              const Text(
+                'Class Code:',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                classCode,
+                style: const TextStyle(fontSize: 12),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
           Container(
-            child: Row(
+            margin: const EdgeInsets.symmetric(horizontal: 10),
+            child: Column(
               children: [
-                Text(
-                  'Class Code:',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 15
-                  ),
+                Row(
+                  children: [
+                    const Icon(Icons.location_on_outlined, size: 15),
+                    const SizedBox(width: 5),
+                    Text(room, style: const TextStyle(fontSize: 11)),
+                  ],
                 ),
-                SizedBox(width: 10,),
-                Text(
-                  'BJL23JHD',
-                  style: TextStyle(
-                    fontSize: 12
-                  ),
-                )
+                const SizedBox(height: 5),
+                Row(
+                  children: [
+                    const Icon(CupertinoIcons.clock, size: 15),
+                    const SizedBox(width: 5),
+                    Text(sched, style: const TextStyle(fontSize: 11)),
+                  ],
+                ),
               ],
             ),
           ),
-          SizedBox(height: 10,),
-          Container(
-            margin: EdgeInsets.symmetric(horizontal: 10),
-            child: Column(
-              children: [
-                Container(
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.location_on_outlined,
-                        size: 15,
-                      ),
-                      SizedBox(width: 5,),
-                      Text(
-                        'Room 301',
-                        style: TextStyle(
-                          fontSize: 11
-                        ),
-                      )
-                    ],
-                  ),
-                ),
-                SizedBox(height: 5,),
-                Container(
-                  child: Row(
-                    children: [
-                      Icon(
-                        CupertinoIcons.clock,
-                        size: 15,
-                      ),
-                      SizedBox(width: 5,),
-                      Text(
-                        'Monday: 9:00 - 11:00 AM',
-                        style: TextStyle(
-                            fontSize: 11
-                        ),
-                      )
-                    ],
-                  ),
-                )
-              ],
-            ),
-          )
         ],
       ),
     );
