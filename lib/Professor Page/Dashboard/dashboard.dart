@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:professor/Professor%20Page/attendance/class_session.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -23,10 +24,188 @@ class Dashboard extends StatefulWidget {
   State<Dashboard> createState() => _DashboardState();
 }
 
+class _FloatingToast extends StatefulWidget {
+  final String message;
+  final Duration duration;
 
+  const _FloatingToast({
+    Key? key,
+    required this.message,
+    this.duration = const Duration(milliseconds: 1200),
+  }) : super(key: key);
 
+  @override
+  State<_FloatingToast> createState() => _FloatingToastState();
+}
+
+class _FloatingToastState extends State<_FloatingToast>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _fade;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 180), // fade in speed
+    );
+
+    _fade = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOut,
+      reverseCurve: Curves.easeIn,
+    );
+
+    _controller.forward();
+
+    // start fade out near the end
+    Future.delayed(widget.duration - const Duration(milliseconds: 220), () async {
+      if (!mounted) return;
+      await _controller.reverse();
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _fade,
+      child: Material(
+        color: Colors.transparent,
+        child: Center(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.85),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.check, color: Colors.white, size: 16),
+                const SizedBox(width: 8),
+                Text(
+                  widget.message,
+                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _DashboardState extends State<Dashboard> {
+  Future<void> _showShareClassCodeModal(String classCode) async {
+    await showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          title: const Text(
+            'Share Class Code',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Give this code to your students:',
+                style: TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF3F4F6),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFE5E7EB)),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: SelectableText(
+                        classCode,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      tooltip: 'Copy',
+                      onPressed: () async {
+                        await Clipboard.setData(ClipboardData(text: classCode));
+                        if (!mounted) return;
+
+                        _showFloatingBubble('Class code copied');
+                      },
+                      icon: const Icon(Icons.copy),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            SizedBox(
+              height: 36,
+              child: TextButton(
+                style: TextButton.styleFrom(foregroundColor: Colors.black),
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Close'),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  OverlayEntry? _toastEntry;
+
+  void _showFloatingBubble(String message) {
+    // remove existing toast if any (para hindi nag-o-overlap)
+    _toastEntry?.remove();
+    _toastEntry = null;
+
+    final overlay = Overlay.of(context);
+    if (overlay == null) return;
+
+    late OverlayEntry entry;
+
+    entry = OverlayEntry(
+      builder: (context) => Positioned(
+        bottom: 120,
+        left: 40,
+        right: 40,
+        child: _FloatingToast(message: message),
+      ),
+    );
+
+    _toastEntry = entry;
+    overlay.insert(entry);
+
+    Future.delayed(const Duration(milliseconds: 1300), () {
+      entry.remove();
+      if (_toastEntry == entry) _toastEntry = null;
+    });
+  }
+
   Timer? _tick;
 
   Future<void> _loadClasses() async {
@@ -515,8 +694,8 @@ class _DashboardState extends State<Dashboard> {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    itemBuilder: (context) => const [
-                      PopupMenuItem<String>(
+                    itemBuilder: (context) => [
+                      const PopupMenuItem<String>(
                         value: 'edit',
                         child: Row(
                           children: [
@@ -526,7 +705,7 @@ class _DashboardState extends State<Dashboard> {
                           ],
                         ),
                       ),
-                      PopupMenuItem<String>(
+                      const PopupMenuItem<String>(
                         value: 'archive',
                         child: Row(
                           children: [
@@ -536,7 +715,18 @@ class _DashboardState extends State<Dashboard> {
                           ],
                         ),
                       ),
+                      const PopupMenuItem<String>(
+                        value: 'share',
+                        child: Row(
+                          children: [
+                            Icon(Icons.share_outlined, size: 18),
+                            SizedBox(width: 8),
+                            Text('Share'),
+                          ],
+                        ),
+                      ),
                     ],
+
                     onSelected: (value) async {
                       if (value == 'archive') {
                         final ok = await _confirmArchive();
@@ -565,11 +755,17 @@ class _DashboardState extends State<Dashboard> {
 
                         if (updated != null) {
                           await _showBlockingLoaderWhile(() async {
-                            await _loadClasses(); // refresh from DB para consistent
+                            await _loadClasses();
                           });
                         }
                       }
+
+                      if (value == 'share') {
+                        // show modal with classCode + copy button
+                        await _showShareClassCodeModal(classCode);
+                      }
                     },
+
                   ),
                 ],
               )
