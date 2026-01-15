@@ -40,7 +40,48 @@ class StartSession extends StatefulWidget {
 
 
 class _StartSessionState extends State<StartSession> {
+  bool _loadingEnrolled = true;
+  String? _enrolledErr;
+  List<Map<String, dynamic>> _enrolled = [];
+
+  Future<void> _loadEnrolledStudents() async {
+    setState(() {
+      _loadingEnrolled = true;
+      _enrolledErr = null;
+    });
+
+    try {
+      final supabase = Supabase.instance.client;
+
+      final rows = await supabase
+          .from('class_enrollments')
+          .select('student_id, students(first_name, last_name, student_number, avatar_url)')
+          .eq('class_id', widget.classId)
+          .order('joined_at', ascending: true);
+
+      final list = (rows as List).map((r) => r as Map<String, dynamic>).toList();
+
+      if (!mounted) return;
+      setState(() {
+        _enrolled = list;
+        _loadingEnrolled = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _enrolledErr = e.toString();
+        _loadingEnrolled = false;
+      });
+    }
+  }
+
   final ScrollController _studentScrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadEnrolledStudents();
+  }
 
   @override
   void dispose() {
@@ -62,28 +103,66 @@ class _StartSessionState extends State<StartSession> {
     'Tony Stark',
   ];
 
-  Widget student(String studentName) {
+  Widget studentRow({
+    required String name,
+    String? avatarUrl,
+  }) {
+    final hasUrl = avatarUrl != null && avatarUrl.trim().isNotEmpty;
+
     return Column(
       children: [
         Container(
-          margin: EdgeInsets.symmetric(horizontal: 20),
+          margin: const EdgeInsets.symmetric(horizontal: 20),
           child: Row(
             children: [
-              Image.asset(
-                  width: 20,
-                  'assets/avatar.png'
-              ),
-              SizedBox(width: 10,),
-              Text(
-                studentName,
-                style: TextStyle(
-                  fontSize: 12,
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: hasUrl
+                    ? Image.network(
+                  avatarUrl!,
+                  width: 28,
+                  height: 28,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Image.asset(
+                    'assets/avatar.png',
+                    width: 28,
+                    height: 28,
+                    fit: BoxFit.cover,
+                  ),
+                  loadingBuilder: (context, child, progress) {
+                    if (progress == null) return child;
+                    return const SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: Center(
+                        child: SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                    );
+                  },
+                )
+                    : Image.asset(
+                  'assets/avatar.png',
+                  width: 28,
+                  height: 28,
+                  fit: BoxFit.cover,
                 ),
-              )
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  name,
+                  style: const TextStyle(fontSize: 12),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ],
           ),
         ),
-        SizedBox(height: 10,),
+        const SizedBox(height: 10),
       ],
     );
   }
@@ -163,6 +242,21 @@ class _StartSessionState extends State<StartSession> {
         );
       }
     }
+  }
+
+  Widget buildStudentRow(Map<String, dynamic> row) {
+    final s = row['students'] as Map<String, dynamic>?;
+
+    final name = s == null
+        ? 'Unknown Student'
+        : '${s['first_name'] ?? ''} ${s['last_name'] ?? ''}'.trim();
+
+    final avatarUrl = s?['avatar_url'] as String?;
+
+    return studentRow(
+      name: name.isEmpty ? 'Unknown Student' : name,
+      avatarUrl: avatarUrl,
+    );
   }
 
   @override
@@ -313,8 +407,8 @@ class _StartSessionState extends State<StartSession> {
                                 ),
                               ),
                               Text(
-                                '${widget.students.length} students',
-                                style: TextStyle(
+                                  _loadingEnrolled ? 'Loading...' : '${_enrolled.length} students',
+                                  style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.bold
                                 ),
@@ -323,47 +417,57 @@ class _StartSessionState extends State<StartSession> {
                           ),
                         ),
                         SizedBox(height: 10,),
-                        !viewAllList
-                            ? Container(
-                          height: screenHeight * .18,
-                          child: Column(
-                            children: widget.students.take(5)
-                                      .map((stud) => student(stud)).toList(),
+                        if (_loadingEnrolled) ...[
+                          const SizedBox(height: 20),
+                          const Center(child: CircularProgressIndicator()),
+                        ] else if (_enrolledErr != null) ...[
+                          const SizedBox(height: 10),
+                          Text(
+                            _enrolledErr!,
+                            style: const TextStyle(color: Colors.red, fontSize: 12),
                           ),
-                        )
-                            : SizedBox(
-                          height: screenHeight * .22,
-                          child: Scrollbar(
-                            controller: _studentScrollController,
-                            thumbVisibility: true, // always visible
-                            radius: const Radius.circular(8),
-                            thickness: 4,
-                            child: ListView.builder(
-                              controller: _studentScrollController,
-                              itemCount: widget.students.length,
-                              itemBuilder: (context, index) {
-                                return student(widget.students[index]);
-                              },
+                        ] else if (_enrolled.isEmpty) ...[
+                          const SizedBox(height: 10),
+                          const Text(
+                            'No enrolled students yet.',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                        ] else ...[
+                          !viewAllList
+                              ? SizedBox(
+                            height: screenHeight * .18,
+                            child: Column(
+                              children: _enrolled
+                                  .take(5)
+                                  .map((r) => buildStudentRow(r))
+                                  .toList(),
                             ),
-                          ),
-                        ),
-
-                        Center(
-                          child: TextButton(
-                            onPressed: () {
-                              setState(() {
-                                viewAllList = !viewAllList;
-                              });
-                            },
-                            child: Text(
-                              !viewAllList ? 'View all students' : 'Show less',
-                              style: TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF105698)
+                          )
+                              : SizedBox(
+                            height: screenHeight * .22,
+                            child: Scrollbar(
+                              controller: _studentScrollController,
+                              thumbVisibility: true,
+                              radius: const Radius.circular(8),
+                              thickness: 4,
+                              child: ListView.builder(
+                                controller: _studentScrollController,
+                                itemCount: _enrolled.length,
+                                itemBuilder: (context, index) => buildStudentRow(_enrolled[index]),
                               ),
                             ),
                           ),
-                        )
+                        ],
+                        if (!_loadingEnrolled && _enrolled.isNotEmpty)
+                        Center(
+                          child: TextButton(
+                            onPressed: () => setState(() => viewAllList = !viewAllList),
+                            child: Text(
+                              !viewAllList ? 'View all students' : 'Show less',
+                              style: const TextStyle(fontSize: 12, color: Color(0xFF105698)),
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   )
