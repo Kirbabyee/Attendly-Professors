@@ -231,6 +231,19 @@ class _StartSessionState extends State<StartSession> {
           'status': 'started',
         });
 
+        final session = supabase.auth.currentSession;
+
+        if (session == null) {
+          throw Exception("Not logged in / session expired.");
+        }
+
+        final res = await supabase.functions.invoke(
+          'process_notification_queue',
+          body: {'limit': 50},
+        );
+
+        print(res.data);
+
         if (!mounted) return;
         widget.onStarted(); // ✅ update UI/dashboard
       } catch (e) {
