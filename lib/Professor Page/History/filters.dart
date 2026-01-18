@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:syncfusion_flutter_datepicker/datepicker.dart';
 
 import 'export_function.dart';
 
@@ -44,7 +45,7 @@ class _DataFilterState extends State<DataFilter> {
   String selectedStatus = 'All'; // chips: All/Present/Late/Absent
   String selectedClass = 'All';  // dropdown: Filter by class
 
-  DateTime? selectedDate;
+  DateTimeRange? selectedRange;
 
   List<AttendanceRecord> allRecords = [];
   List<AttendanceRecord> filteredRecords = [];
@@ -151,10 +152,12 @@ class _DataFilterState extends State<DataFilter> {
         final matchesClass =
             selectedClass == 'All' || record.courseCode == selectedClass;
 
-        final matchesDate = selectedDate == null ||
-            (record.date.year == selectedDate!.year &&
-                record.date.month == selectedDate!.month &&
-                record.date.day == selectedDate!.day);
+        final matchesDate = selectedRange == null || (() {
+          final d = DateTime(record.date.year, record.date.month, record.date.day);
+          final start = DateTime(selectedRange!.start.year, selectedRange!.start.month, selectedRange!.start.day);
+          final end = DateTime(selectedRange!.end.year, selectedRange!.end.month, selectedRange!.end.day);
+          return !d.isBefore(start) && !d.isAfter(end);
+        })();
 
         return matchesSearch && matchesClass && matchesDate;
       }).toList();
@@ -212,37 +215,71 @@ class _DataFilterState extends State<DataFilter> {
     await Share.shareXFiles([XFile(file.path)], text: 'Attendance CSV');
   }
 
-  Future<void> pickDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: selectedDate ?? DateTime.now(),
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2100),
+  Future<void> pickDateRangeDialogCalendar() async {
+    DateTimeRange? temp = selectedRange;
 
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: Colors.blue,     // header & selected date
-              onPrimary: Colors.white,  // header text
-              surface: Colors.white,    // ✅ dialog background
-              onSurface: Colors.black,  // body text
-            ),
-            dialogBackgroundColor: Colors.white, // ✅ ensures white bg
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          title: const Text(
+            'Select date range',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
           ),
-          child: child!,
+          content: SizedBox(
+            width: 340,
+            height: 360,
+            child: SfDateRangePicker(
+              selectionMode: DateRangePickerSelectionMode.range,
+              toggleDaySelection: true,
+              backgroundColor: Colors.white,
+              headerStyle: DateRangePickerHeaderStyle(
+                backgroundColor: Colors.white
+              ),
+              initialSelectedRange: temp == null
+                  ? null
+                  : PickerDateRange(temp!.start, temp!.end),
+              onSelectionChanged: (args) {
+                final r = args.value;
+
+                if (r is PickerDateRange) {
+                  final DateTime? start = r.startDate;
+                  if (start == null) return;
+
+                  final DateTime end = r.endDate ?? start; // ✅ non-null end
+                  temp = DateTimeRange(start: start, end: end);
+                }
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Color(0xFF004280)
+              ),
+              onPressed: () {
+                setState(() => selectedRange = temp);
+                applyFilters();
+                Navigator.pop(context);
+              },
+              child: Text('Apply', style: TextStyle(color: Colors.white),),
+            ),
+          ],
         );
       },
     );
-
-    if (picked != null) {
-      setState(() => selectedDate = picked);
-      applyFilters();
-    }
   }
 
   String _fmt(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  String _fmtRange(DateTimeRange r) => '${_fmt(r.start)} - ${_fmt(r.end)}';
 
   @override
   void dispose() {
@@ -310,20 +347,21 @@ class _DataFilterState extends State<DataFilter> {
                                 borderRadius: BorderRadius.circular(8),
                               ),
                             ),
-                            onPressed: pickDate,
+                            onPressed: pickDateRangeDialogCalendar,
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text(
-                                  selectedDate == null
-                                      ? 'Select date'
-                                      : _fmt(selectedDate!),
-                                  style: const TextStyle(fontSize: 12, color: Colors.black),
+                                Expanded(
+                                  child: Text(
+                                    selectedRange == null ? 'Select date' : _fmtRange(selectedRange!),
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 12, color: Colors.black),
+                                  ),
                                 ),
-                                if (selectedDate != null)
+                                if (selectedRange != null)
                                   GestureDetector(
                                     onTap: () {
-                                      setState(() => selectedDate = null);
+                                      setState(() => selectedRange = null);
                                       applyFilters();
                                     },
                                     child: const Icon(Icons.close, size: 16),
@@ -385,81 +423,95 @@ class _DataFilterState extends State<DataFilter> {
                 SizedBox(height: screenHeight > 700 ? 10 : 5),
 
                 // ✅ LIST AREA (scrollable)
+                // ✅ LIST AREA (scrollable) + PULL TO REFRESH
                 Expanded(
                   child: _loading
                       ? const Center(child: CircularProgressIndicator())
                       : (_err != null)
                       ? Center(child: Text('Error: $_err'))
-                      : (filteredRecords.isEmpty
-                      ? const Center(child: Text('No records found.'))
-                      : ListView.builder(
-                    itemCount: filteredRecords.length,
-                    itemBuilder: (context, index) {
-                      final record = filteredRecords[index];
-                      final bg = index.isEven ? Colors.white : Colors.grey[300];
+                      : RefreshIndicator(
+                    onRefresh: () async {
+                      await _loadSessions(); // reload from DB
+                    },
+                    child: filteredRecords.isEmpty
+                        ? ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: const [
+                        SizedBox(height: 120),
+                        Center(child: Text('No records found.')),
+                      ],
+                    )
+                        : ListView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      itemCount: filteredRecords.length,
+                      itemBuilder: (context, index) {
+                        final record = filteredRecords[index];
+                        final bg = index.isEven ? Colors.white : Colors.grey[300];
 
-                      return Container(
-                        height: 100,
-                        decoration: BoxDecoration(
-                          color: bg,
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Colors.black26,
-                              blurRadius: 2,
-                              offset: Offset(0, 5),
-                            ),
-                          ],
-                        ),
-                        child: Center(
-                          child: ListTile(
-                            title: Text(
-                              record.courseName,
-                              style: TextStyle(
-                                fontWeight: FontWeight.w500,
-                                fontSize: screenHeight > 700 ? 12 : 11,
+                        return Container(
+                          height: 100,
+                          decoration: BoxDecoration(
+                            color: bg,
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black26,
+                                blurRadius: 2,
+                                offset: Offset(0, 5),
                               ),
-                            ),
-                            subtitle: Text(
-                              '${record.courseCode} • ${record.date.toIso8601String().split("T")[0]}',
-                              style: TextStyle(
-                                fontSize: screenHeight > 700 ? 11 : 10,
-                              ),
-                            ),
-                            trailing: SizedBox(
-                              child: OutlinedButton.icon(
-                                style: OutlinedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                                  backgroundColor: const Color(0xFF004280),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadiusGeometry.circular(6),
-                                  ),
-                                  side: BorderSide.none,
+                            ],
+                          ),
+                          child: Center(
+                            child: ListTile(
+                              title: Text(
+                                record.courseName,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: screenHeight > 700 ? 12 : 11,
                                 ),
-                                onPressed: () async {
-                                  try {
-                                    await exportSessionToExcel(
-                                      sessionId: record.sessionId,
-                                      fileLabel: '${record.courseCode}_${record.date.toIso8601String().split("T")[0]}',
-                                    );
-                                  } catch (e) {
-                                    if (!mounted) return;
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('Export failed: $e')),
-                                    );
-                                  }
-                                },
-                                icon: const Icon(Icons.download, size: 14, color: Colors.white),
-                                label: const Text(
-                                  'Export CSV',
-                                  style: TextStyle(fontSize: 10, color: Colors.white),
+                              ),
+                              subtitle: Text(
+                                '${record.courseCode} • ${record.date.toIso8601String().split("T")[0]}',
+                                style: TextStyle(
+                                  fontSize: screenHeight > 700 ? 11 : 10,
+                                ),
+                              ),
+                              trailing: SizedBox(
+                                child: OutlinedButton.icon(
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                                    backgroundColor: const Color(0xFF004280),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadiusGeometry.circular(6),
+                                    ),
+                                    side: BorderSide.none,
+                                  ),
+                                  onPressed: () async {
+                                    try {
+                                      await exportSessionToExcel(
+                                        sessionId: record.sessionId,
+                                        fileLabel:
+                                        '${record.courseCode}_${record.date.toIso8601String().split("T")[0]}',
+                                      );
+                                    } catch (e) {
+                                      if (!mounted) return;
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text('Export failed: $e')),
+                                      );
+                                    }
+                                  },
+                                  icon: const Icon(Icons.download, size: 14, color: Colors.white),
+                                  label: const Text(
+                                    'Export CSV',
+                                    style: TextStyle(fontSize: 10, color: Colors.white),
+                                  ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                      );
-                    },
-                  )),
+                        );
+                      },
+                    ),
+                  ),
                 )
               ],
             ),

@@ -1,6 +1,8 @@
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../Notifications/push_manager.dart';
 import '../professor_session.dart';
 import 'privacy_policy.dart';
 
@@ -33,6 +35,7 @@ class _SettingsState extends State<Settings> {
       if (!mounted) return;
       setState(() {
         _professor = s;
+        isNotificationOn = (s?['push_enabled'] as bool?) ?? false;
         _loadingProfessor = false;
       });
     } catch (e) {
@@ -44,7 +47,8 @@ class _SettingsState extends State<Settings> {
     }
   }
 
-  bool isOn = false;
+  bool isNotificationOn = false;
+  bool isAutoEndSession = false;
 
   String termOfService = 'Welcome to Attendly. By accessing or using the Attendly system, you agree to comply with and be bound by the following Terms of Service. If you do not agree with these terms, please refrain from using the system.\n'
       '\nAttendly is an attendance monitoring system designed for academic use. The system verifies attendance through network-based detection, hardware-assisted presence validation, and biometric face verification. Users are expected to use the system solely for its intended educational purpose.\n'
@@ -92,6 +96,7 @@ class _SettingsState extends State<Settings> {
 
   @override
   Widget build(BuildContext context) {
+    bool _notifBusy = false;
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
     return Scaffold(
@@ -246,82 +251,60 @@ class _SettingsState extends State<Settings> {
                                 Transform.scale(
                                   scale: screenHeight * .001,
                                   child: Switch(
-                                    value: isOn,
-                                    onChanged: (value) {
-                                      setState(() {
-                                        isOn = value;
-                                      });
-                                    },
-                                    activeThumbColor: Colors.white,
-                                    activeTrackColor: Color(0xFF043B6F),
-                                    inactiveTrackColor: Colors.white,
-                                  ),
-                                )
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                                    value: isNotificationOn,
+                                    onChanged: (value) async {
+                                      // 1️⃣ confirm muna
+                                      final ok = await showDialog<bool>(
+                                        context: context,
+                                        barrierDismissible: true,
+                                        builder: (_) => AlertDialog(
+                                          backgroundColor: Colors.white,
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                          title: Text(
+                                            value ? 'Enable notifications?' : 'Disable notifications?',
+                                            style: const TextStyle(fontWeight: FontWeight.w600),
+                                          ),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () => Navigator.pop(context, false),
+                                              child: const Text('Cancel'),
+                                            ),
+                                            ElevatedButton(
+                                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF004280)),
+                                              onPressed: () => Navigator.pop(context, true),
+                                              child: const Text('Confirm', style: TextStyle(color: Colors.white)),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                      if (ok != true) return;
 
-                    SizedBox(height: screenHeight * .023),
+                                      final prev = isNotificationOn;
+                                      setState(() => isNotificationOn = value);
 
-                    Container(
-                      width: screenWidth * .9,
-                      padding: EdgeInsets.all(screenHeight * .023),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadiusGeometry.circular(8),
-                      ),
-                      child: Column(
-                        children: [
-                          Row(
-                            children: [
-                              Icon(Icons.settings, size: screenHeight * .023, color: Colors.black),
-                              SizedBox(width: 10),
-                              Text(
-                                'Session Settings',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.black,
-                                    fontSize: screenHeight * .017
-                                ),
-                              )
-                            ],
-                          ),
-                          SizedBox(height: 10),
-                          Container(
-                            padding: EdgeInsets.symmetric(horizontal: screenWidth * .05, vertical: screenHeight * .005),
-                            decoration: BoxDecoration(
-                              color: Color(0x90D9D9D9),
-                              borderRadius: BorderRadiusGeometry.circular(8),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Auto-End Sessions',
-                                      style: TextStyle(fontSize: screenHeight * .014, fontWeight: FontWeight.w600),
-                                    ),
-                                    Text('End Session when class time expires', style: TextStyle(fontSize: screenHeight * .012)),
-                                  ],
-                                ),
-                                Transform.scale(
-                                  scale: screenHeight * .001,
-                                  child: Switch(
-                                    value: isOn,
-                                    onChanged: (value) {
-                                      setState(() {
-                                        isOn = value;
-                                      });
+                                      final profId = _professor?['id']?.toString();
+                                      if (profId == null) return;
+
+                                      try {
+                                        final professorId = _professor?['id']?.toString(); // professors.id
+                                        if (professorId == null) return;
+
+                                        await PushManager.enableAndRegisterToken(
+                                          professorId: professorId,
+                                          enabled: value,
+                                        );
+
+                                        print(await FirebaseMessaging.instance.getToken());
+                                      } catch (e) {
+                                        // revert if failed
+                                        if (!mounted) return;
+                                        setState(() => isNotificationOn = prev);
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('Failed to update notifications: $e')),
+                                        );
+                                      }
                                     },
-                                    activeThumbColor: Colors.white,
-                                    activeTrackColor: Color(0xFF043B6F),
-                                    inactiveTrackColor: Colors.white,
-                                  ),
+                                  )
                                 )
                               ],
                             ),

@@ -40,6 +40,210 @@ class EndSession extends StatefulWidget {
 }
 
 class _EndSessionState extends State<EndSession> {
+  Future<void> _openPendingActions({
+    required String studentId,
+    required String studentName,
+  }) async {
+    final choice = await showDialog<String>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => AlertDialog(
+        backgroundColor: Colors.white,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 70, vertical: 24), // ✅ mas maliit width
+        contentPadding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+        actionsPadding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        titlePadding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+        title: Text(
+          studentName,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        ),
+        content: const Text(
+          'Set student status:',
+          style: TextStyle(fontSize: 12),
+        ),
+        actions: [
+          SizedBox(
+            height: 32,
+            child: TextButton(
+              onPressed: () => Navigator.pop(context, null),
+              child: const Text('Cancel', style: TextStyle(fontSize: 12, color: Colors.black)),
+            ),
+          ),
+          SizedBox(
+            height: 32,
+            child: TextButton(
+              onPressed: () => Navigator.pop(context, 'excused'),
+              child: const Text('Excuse', style: TextStyle(fontSize: 12, color: Colors.orange)),
+            ),
+          ),
+          SizedBox(
+            height: 32,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF018832),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              onPressed: () => Navigator.pop(context, 'present'),
+              child: const Text('Present', style: TextStyle(fontSize: 12, color: Colors.white)),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (choice == null) return;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => AlertDialog(
+        backgroundColor: Colors.white,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 90, vertical: 24), // ✅ mas maliit pa
+        contentPadding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+        actionsPadding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        titlePadding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+        title: const Text('Confirm', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+        content: Text(
+          choice == 'present' ? 'Mark as Present?' : 'Mark as Excused?',
+          style: const TextStyle(fontSize: 12),
+        ),
+        actions: [
+          SizedBox(
+            height: 32,
+            child: TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('No', style: TextStyle(fontSize: 12, color: Colors.black)),
+            ),
+          ),
+          SizedBox(
+            height: 32,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF004280),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Yes', style: TextStyle(fontSize: 12, color: Colors.white)),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (ok != true) return;
+
+    try {
+      await _markStudentStatus(studentId: studentId, newStatus: choice);
+      await _loadData();
+
+      await _showSuccessModal(
+        choice == 'present'
+            ? 'Student marked as PRESENT'
+            : 'Student marked as EXCUSED',
+      );
+
+      if (!mounted) return;
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed: $e')),
+      );
+    }
+  }
+
+  Future<void> _showSuccessModal(String message) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        backgroundColor: Colors.white,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 110, vertical: 24),
+        contentPadding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(CupertinoIcons.check_mark_circled_solid,
+                color: Color(0xFF018832), size: 40),
+            const SizedBox(height: 10),
+            Text(message, textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 13)),
+          ],
+        ),
+      ),
+    );
+
+    await Future.delayed(const Duration(seconds: 1));
+    if (mounted) Navigator.pop(context);
+  }
+
+  Future<void> _markStudentStatus({
+    required String studentId,
+    required String newStatus, // 'present' | 'excused'
+  }) async {
+    final supabase = Supabase.instance.client;
+    if (_sessionId == null) throw 'No active session id';
+
+    final nowIso = DateTime.now().toIso8601String();
+    final changedBy = supabase.auth.currentUser?.id;
+
+    // check existing attendance row (to get old status if any)
+    final existing = await supabase
+        .from('attendance')
+        .select('id, status')
+        .eq('session_id', _sessionId!)
+        .eq('student_id', studentId)
+        .maybeSingle();
+
+    final oldStatus = (existing?['status'] as String?);
+
+    // upsert attendance row
+    await supabase.from('attendance').upsert({
+      'session_id': _sessionId,
+      'student_id': studentId,
+      'status': newStatus,
+      'time_in': newStatus == 'present' ? nowIso : null,
+      'time_out': null,
+    }, onConflict: 'session_id,student_id');
+
+    // insert history (adjust action values to your constraint)
+    final action = newStatus == 'excused' ? 'mark_excused' : 'mark_present';
+
+    // fetch attendance id after upsert
+    final after = await supabase
+        .from('attendance')
+        .select('id')
+        .eq('session_id', _sessionId!)
+        .eq('student_id', studentId)
+        .maybeSingle();
+
+    final attendanceId = after?['id'];
+
+    if (attendanceId != null) {
+      await supabase.from('attendance_history').insert({
+        'attendance_id': attendanceId,
+        'session_id': _sessionId,
+        'student_id': studentId,
+        'professor_id': changedBy,
+        'old_status': oldStatus,
+        'new_status': newStatus,
+        'action': action,
+        'changed_by': changedBy,
+        'changed_by_role': 'professor',
+        'reason': 'Manual update during session',
+        'changed_at': nowIso,
+      });
+    }
+  }
+
   Future<void> _finalizeAttendanceAndLogHistory(String endedAtIso) async {
     final supabase = Supabase.instance.client;
 
@@ -370,59 +574,76 @@ class _EndSessionState extends State<EndSession> {
     final isPresent = st == 'present' || st == 'late';
     final isLate = st == 'late';
 
-    return Column(
-      children: [
-        Container(
-          margin: const EdgeInsets.symmetric(horizontal: 20),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(999),
-                    child: (avatarUrl != null && avatarUrl.trim().isNotEmpty)
-                        ? Image.network(
-                      avatarUrl,
-                      width: 20,
-                      height: 20,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) =>
-                          Image.asset('assets/avatar.png', width: 20, height: 20),
-                    )
-                        : Image.asset('assets/avatar.png', width: 20, height: 20),
-                  ),
-                  const SizedBox(width: 10),
-                  Text(name.isEmpty ? 'Unknown Student' : name, style: const TextStyle(fontSize: 12)),
-                ],
-              ),
+    final isPending = !isPresent && st != 'excused'; // pending if no record OR not present/late/excused
 
-              Row(
+    return InkWell(
+      onTap: isPending
+          ? () => _openPendingActions(studentId: sid, studentName: name)
+          : null,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Icon(
-                    isPresent ? CupertinoIcons.check_mark_circled : CupertinoIcons.clock,
-                    color: isPresent
-                        ? (isLate ? Colors.orange : const Color(0xFF018832))
-                        : Color(0xFFF7CB73),
-                    size: 15,
+                  Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(999),
+                        child: (avatarUrl != null && avatarUrl.trim().isNotEmpty)
+                            ? Image.network(
+                          avatarUrl,
+                          width: 20,
+                          height: 20,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) =>
+                              Image.asset('assets/avatar.png', width: 20, height: 20),
+                        )
+                            : Image.asset('assets/avatar.png', width: 20, height: 20),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(name.isEmpty ? 'Unknown Student' : name, style: const TextStyle(fontSize: 12)),
+                    ],
                   ),
-                  const SizedBox(width: 6),
-                  Text(
-                    isPresent ? (isLate ? 'Late' : 'Present') : 'Pending',
-                    style: TextStyle(
-                      color: isPresent
-                          ? (isLate ? Colors.orange : const Color(0xFF018832))
-                          : Color(0xFFF7CB73),
-                      fontSize: 12,
-                    ),
+
+                  Row(
+                    children: [
+                      Icon(
+                        isPresent
+                            ? CupertinoIcons.check_mark_circled
+                            : (st == 'excused' ? CupertinoIcons.info_circle : CupertinoIcons.clock),
+                        color: isPresent
+                            ? (isLate ? Colors.orange : const Color(0xFF018832))
+                            : (st == 'excused' ? Colors.blue : const Color(0xFFF7CB73)),
+                        size: 15,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        isPresent ? (isLate ? 'Late' : 'Present') : (st == 'excused' ? 'Excused' : 'Pending'),
+                        style: TextStyle(
+                          color: isPresent
+                              ? (isLate ? Colors.orange : const Color(0xFF018832))
+                              : (st == 'excused' ? Colors.blue : const Color(0xFFF7CB73)),
+                          fontSize: 12,
+                        ),
+                      ),
+
+                      if (isPending) ...[
+                        const SizedBox(width: 8),
+                        const Icon(Icons.edit, size: 14, color: Colors.grey),
+                      ],
+                    ],
                   )
                 ],
-              )
-            ],
-          ),
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
         ),
-        const SizedBox(height: 10),
-      ],
+      ),
     );
   }
 

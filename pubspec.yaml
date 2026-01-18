@@ -47,6 +47,10 @@ dependencies:
   path_provider: ^2.1.2
   share_plus: ^7.2.2
   open_filex: ^4.5.0
+  firebase_core: ^4.3.0
+  firebase_messaging: ^16.1.0
+  flutter_local_notifications: ^19.5.0
+  syncfusion_flutter_datepicker: ^32.1.23
 
 dev_dependencies:
   flutter_test:

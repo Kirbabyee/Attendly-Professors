@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:professor/Professor%20Page/professor_session.dart';
@@ -14,6 +17,21 @@ class Login extends StatefulWidget {
 }
 
 class _LoginState extends State<Login> {
+  Future<void> _attachDeviceTokenToUser(String uid) async {
+    final token = await FirebaseMessaging.instance.getToken();
+    if (token == null || token.isEmpty) return;
+
+    // remove token from any previous user (important for multi-account on same device)
+    await supabase.from('device_tokens').delete().eq('token', token);
+
+    // attach to current user
+    await supabase.from('device_tokens').upsert({
+      'user_id': uid,
+      'token': token,
+      'platform': Platform.isAndroid ? 'android' : 'ios',
+      'updated_at': DateTime.now().toIso8601String(),
+    }, onConflict: 'token');
+  }
   String? emailValidator(String? value) {
     final email = value?.trim() ?? '';
 
@@ -347,7 +365,7 @@ class _LoginState extends State<Login> {
                               _formKey.currentState!.validate();
                               return;
                             }
-
+                            await _attachDeviceTokenToUser(uid);
                             ProfessorSession.clear();
                             await ProfessorSession.get(force: true);
 

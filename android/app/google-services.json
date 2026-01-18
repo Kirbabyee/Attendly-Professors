@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "225062424271",
+    "project_id": "attendly-project",
+    "storage_bucket": "attendly-project.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:225062424271:android:642a15abb71f1078ddf1ba",
+        "android_client_info": {
+          "package_name": "com.example.professor"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCE8BO7gOuKD-bsgSnSlfJ9LbtM5rhPjes"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
