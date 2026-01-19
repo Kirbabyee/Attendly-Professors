@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../mainshell.dart';
@@ -13,10 +16,57 @@ class ChangePassword extends StatefulWidget {
 }
 
 class _ChangePasswordState extends State<ChangePassword> {
+  int _cooldown = 0;
+  Timer? _cooldownTimer;
+
+  static const _cooldownKey = 'prof_forgot_cooldown_until_ms';
+
+  Future<void> _restoreCooldown() async {
+    final prefs = await SharedPreferences.getInstance();
+    final untilMs = prefs.getInt(_cooldownKey) ?? 0;
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+
+    final remaining = ((untilMs - nowMs) / 1000).ceil();
+    if (remaining > 0) {
+      _runCooldownTimer(remaining);
+    } else {
+      // expired -> cleanup
+      await prefs.remove(_cooldownKey);
+      if (mounted) setState(() => _cooldown = 0);
+    }
+  }
+
+  Future<void> _startCooldown([int seconds = 60]) async {
+    final prefs = await SharedPreferences.getInstance();
+    final untilMs = DateTime.now().millisecondsSinceEpoch + (seconds * 1000);
+    await prefs.setInt(_cooldownKey, untilMs);
+
+    _runCooldownTimer(seconds);
+  }
+
+  void _runCooldownTimer(int seconds) {
+    _cooldownTimer?.cancel();
+    setState(() => _cooldown = seconds);
+
+    _cooldownTimer = Timer.periodic(const Duration(seconds: 1), (t) async {
+      if (!mounted) return;
+      if (_cooldown <= 1) {
+        t.cancel();
+        setState(() => _cooldown = 0);
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove(_cooldownKey);
+      } else {
+        setState(() => _cooldown -= 1);
+      }
+    });
+  }
+
   @override
   void initState() {
     super.initState();
     _loadProfessor();
+    _restoreCooldown();
   }
 
   String? _profEmail;
@@ -61,7 +111,7 @@ class _ChangePasswordState extends State<ChangePassword> {
 
   final TextEditingController _otpController = TextEditingController();
 
-  Future<String?> _showOtpModal() async {
+  Future<String?> _showOtpModal({required String professorId}) async {
     _otpController.clear();
 
     return showDialog<String>(
@@ -71,8 +121,77 @@ class _ChangePasswordState extends State<ChangePassword> {
         bool localLoading = false;
         String? localError;
 
+        int secondsLeft = 60;          // 👈 countdown start
+        Timer? timer;
+
+        void startTimer(void Function(void Function()) setStateDialog) {
+          timer?.cancel();
+          secondsLeft = 60;
+
+          timer = Timer.periodic(const Duration(seconds: 1), (t) {
+            if (secondsLeft <= 1) {
+              t.cancel();
+              setStateDialog(() => secondsLeft = 0);
+            } else {
+              setStateDialog(() => secondsLeft -= 1);
+            }
+          });
+        }
+
         return StatefulBuilder(
           builder: (ctx, setStateDialog) {
+            // ✅ start countdown once when dialog opens
+            timer ??= Timer(const Duration(milliseconds: 1), () {
+              startTimer(setStateDialog);
+            });
+
+            Future<void> resendOtp() async {
+              setStateDialog(() {
+                localLoading = true;
+                localError = null;
+              });
+
+              try {
+                final session = Supabase.instance.client.auth.currentSession;
+                if (session == null) {
+                  setStateDialog(() {
+                    localError = "Session expired. Please login again.";
+                    localLoading = false;
+                  });
+                  return;
+                }
+
+                final res = await Supabase.instance.client.functions.invoke(
+                  'prof-resend-otp',
+                  body: {'professor_id': professorId},
+                  headers: {'Authorization': 'Bearer ${session.accessToken}'},
+                );
+
+                final data = res.data;
+                if (data == null || data['success'] != true) {
+                  setStateDialog(() {
+                    localError =
+                    "${data?['step'] ?? 'error'}: ${data?['message'] ?? 'Failed'}";
+                    localLoading = false;
+                  });
+                  return;
+                }
+
+                // ✅ restart cooldown after successful resend
+                startTimer(setStateDialog);
+
+                setStateDialog(() {
+                  localError = "OTP sent again. Please check your email.";
+                  localLoading = false;
+                });
+              } catch (e) {
+                setStateDialog(() {
+                  localError = "Resend failed: $e";
+                  localLoading = false;
+                });
+              }
+            }
+
             return AlertDialog(
               backgroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -121,9 +240,19 @@ class _ChangePasswordState extends State<ChangePassword> {
                 Row(
                   children: [
                     Expanded(
-                      child: TextButton(
-                        onPressed: localLoading ? null : () => Navigator.pop(ctx, null),
-                        child: const Text("Cancel"),
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.black87,
+                          side: const BorderSide(color: Color(0xFFDDDDDD)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onPressed: localLoading
+                            ? null
+                            : () {
+                          timer?.cancel();
+                          Navigator.pop(ctx, null);
+                        },
+                        child: const Text("Cancel", style: TextStyle(color: Colors.black)),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -139,25 +268,13 @@ class _ChangePasswordState extends State<ChangePassword> {
                             ? null
                             : () async {
                           final otp = _otpController.text.trim();
-
                           if (otp.length != 6) {
-                            setStateDialog(() {
-                              localError = "OTP must be 6 digits.";
-                            });
+                            setStateDialog(() => localError = "OTP must be 6 digits.");
                             return;
                           }
 
-                          // ✅ if you want to show loading inside the dialog:
-                          setStateDialog(() {
-                            localLoading = true;
-                            localError = null;
-                          });
-
-                          // TODO: call verify otp edge function here later
-                          await Future.delayed(const Duration(milliseconds: 400));
-
-                          setStateDialog(() => localLoading = false);
-
+                          // ✅ close + return OTP to caller
+                          timer?.cancel();
                           Navigator.pop(ctx, otp);
                         },
                         child: localLoading
@@ -172,17 +289,17 @@ class _ChangePasswordState extends State<ChangePassword> {
                   ],
                 ),
                 const SizedBox(height: 6),
+
+                // ✅ RESEND with COUNTDOWN
                 Center(
                   child: TextButton(
-                    onPressed: localLoading
-                        ? null
-                        : () async {
-                      // TODO: call resend OTP edge function later
-                      setStateDialog(() {
-                        localError = "OTP resent (demo).";
-                      });
-                    },
-                    child: const Text("Resend OTP"),
+                    onPressed: (localLoading || secondsLeft > 0) ? null : resendOtp,
+                    child: Text(
+                      secondsLeft > 0 ? "Resend OTP (${secondsLeft}s)" : "Resend OTP",
+                      style: TextStyle(
+                        color: (secondsLeft > 0) ? Colors.grey : Colors.black,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -192,7 +309,6 @@ class _ChangePasswordState extends State<ChangePassword> {
       },
     );
   }
-
 
   Future<void> _showLoading() async {
     showDialog(
@@ -237,7 +353,7 @@ class _ChangePasswordState extends State<ChangePassword> {
         return;
       }
 
-      final otp = await _showOtpModal();
+      final otp = await _showOtpModal(professorId: user.id);
       if (!mounted) return;
       if (otp == null) return;
 
@@ -270,16 +386,18 @@ class _ChangePasswordState extends State<ChangePassword> {
 
   @override
   void dispose() {
+    _cooldownTimer?.cancel();
     _newPassword.dispose();
     _currentPassword.dispose();
     _confirmPassword.dispose();
     _otpController.dispose();
     super.dispose();
   }
-
+  String? _passwordError;
   @override
   Widget build(BuildContext context) {
-    final screenHeight = MediaQuery.of(context).size.width;
+    if(_errorTop.isNotEmpty) _passwordError = 'Incorrect Password';
+    final screenHeight = MediaQuery.of(context).size.height;
     return Scaffold(
       resizeToAvoidBottomInset: false,
       body: SafeArea(
@@ -371,17 +489,6 @@ class _ChangePasswordState extends State<ChangePassword> {
                 key: _formKey,
                 child: Column(
                   children: [
-                    if (_loadingProf)
-                      const Padding(
-                        padding: EdgeInsets.only(bottom: 10),
-                        child: CircularProgressIndicator(),
-                      )
-                    else if (_errorTop.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: Text(/*_errorTop if debugging happens uncomment this error message*/ 'Password Incorrect', style: const TextStyle(color: Colors.red)),
-                      )
-                    else SizedBox(),
                     Row(
                       children: [
                         Icon(
@@ -403,7 +510,7 @@ class _ChangePasswordState extends State<ChangePassword> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Current password'),
+                          Text('$_errorTop'),
                           SizedBox(height: 5,),
                           SizedBox(
                             width: 300,
@@ -423,6 +530,7 @@ class _ChangePasswordState extends State<ChangePassword> {
                               decoration: InputDecoration(
                                 suffixIcon: IconButton(onPressed: () {setState(() {showPassword = !showPassword;});}, icon: Icon(showPassword ? Icons.visibility : Icons.visibility_off)),
                                   errorMaxLines: 1,
+                                  errorText: _passwordError,
                                   errorStyle: TextStyle(
                                     fontSize: 10,
                                   ),
@@ -450,7 +558,14 @@ class _ChangePasswordState extends State<ChangePassword> {
                                         color: Colors.red,
                                         width: .5
                                     ),
-                                  )
+                                  ),
+                                focusedErrorBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: BorderSide(
+                                      color: Colors.red,
+                                      width: .5
+                                  ),
+                                ),
                               ),
                             ),
                           )
@@ -465,17 +580,18 @@ class _ChangePasswordState extends State<ChangePassword> {
                             borderRadius: BorderRadiusGeometry.circular(8)
                         )
                       ),
-                      onPressed: () {
+                      onPressed: _cooldown > 0 ? null : () {
                         if (_formKey.currentState!.validate()) {
                           // All inputs valid
                           _handlePasswordChange();
+                          _startCooldown(60);
                         }
                       },
-                      child: const Text(
-                        'Next',
-                        style: TextStyle(
-                            color: Colors.white
-                        ),
+                      child: Text(
+                        _cooldown > 0
+                            ? 'Please wait (${_cooldown}s)'
+                            : 'Next',
+                        style: const TextStyle(color: Colors.white),
                       ),
                     ),
                   ],

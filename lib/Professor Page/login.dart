@@ -7,6 +7,7 @@ import 'package:professor/Professor%20Page/professor_session.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../main.dart';
+import 'Notifications/push_manager.dart';
 import 'mainshell.dart';
 
 class Login extends StatefulWidget {
@@ -17,21 +18,27 @@ class Login extends StatefulWidget {
 }
 
 class _LoginState extends State<Login> {
-  Future<void> _attachDeviceTokenToUser(String uid) async {
+  Future<void> _attachDeviceTokenToUser(String uid, {required bool enabled}) async {
+    // ✅ if disabled, ensure no tokens for this user and stop
+    if (!enabled) {
+      await supabase.from('device_tokens').delete().eq('user_id', uid);
+      return;
+    }
+
     final token = await FirebaseMessaging.instance.getToken();
     if (token == null || token.isEmpty) return;
 
-    // remove token from any previous user (important for multi-account on same device)
+    // remove token from any previous user (multi-account)
     await supabase.from('device_tokens').delete().eq('token', token);
 
-    // attach to current user
     await supabase.from('device_tokens').upsert({
       'user_id': uid,
       'token': token,
       'platform': Platform.isAndroid ? 'android' : 'ios',
-      'updated_at': DateTime.now().toIso8601String(),
-    }, onConflict: 'token');
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }, onConflict: 'user_id,token');
   }
+
   String? emailValidator(String? value) {
     final email = value?.trim() ?? '';
 
@@ -347,13 +354,13 @@ class _LoginState extends State<Login> {
                             }
 
                             // To check if the account is for student
-                            final studentRow = await supabase
+                            final profRow = await supabase
                                 .from('professors')
-                                .select('id')
+                                .select('id, push_enabled')
                                 .eq('id', uid)
                                 .maybeSingle();
 
-                            if (studentRow == null) {
+                            if (profRow == null) {
                               // Block login if no returns, means not a student account
                               await supabase.auth.signOut();
                               if (!mounted) return;
@@ -365,9 +372,14 @@ class _LoginState extends State<Login> {
                               _formKey.currentState!.validate();
                               return;
                             }
-                            await _attachDeviceTokenToUser(uid);
+
+                            final pushEnabled = (profRow['push_enabled'] as bool?) ?? false;
+                            await _attachDeviceTokenToUser(uid, enabled: pushEnabled);
                             ProfessorSession.clear();
                             await ProfessorSession.get(force: true);
+
+                            await PushManager.initListenersOnce();
+                            await PushManager.syncFromDb();
 
                             if (!mounted) return;
                             Navigator.pop(context);

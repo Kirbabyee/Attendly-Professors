@@ -379,13 +379,26 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
-                    children: const [
-                      Icon(Icons.book_outlined, size: 20),
-                      SizedBox(width: 10),
-                      Text(
-                        'Create Class',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Container(
+                        child: Row(
+                          children: [
+                            Icon(Icons.book_outlined, size: 20),
+                            SizedBox(width: 10),
+                            Text(
+                              'Create Class',
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                            ),
+                          ],
+                        ),
                       ),
+                      InkWell(
+                        onTap: () {
+                          Navigator.pop(context);
+                        },
+                        child: Icon(CupertinoIcons.xmark),
+                      )
                     ],
                   ),
                   const SizedBox(height: 18),

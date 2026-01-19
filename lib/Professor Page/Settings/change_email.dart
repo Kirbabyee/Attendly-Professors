@@ -1,5 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ChangeEmail extends StatefulWidget {
   final String currentEmail;
@@ -14,6 +18,106 @@ class ChangeEmail extends StatefulWidget {
 }
 
 class _ChangeEmailState extends State<ChangeEmail> {
+  String? _pwError;
+  bool _checkingPw = false;
+
+  Future<void> _checkCurrentPassword() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception("Not logged in");
+
+    final pw = _passwordController.text.trim();
+    if (pw.isEmpty) throw Exception("Password is required");
+
+    final res = await supabase.functions.invoke(
+      'check-password',
+      body: {
+        'professor_id': userId,
+        'current_password': pw,
+      },
+    );
+
+    if (res.status != 200) {
+      final msg = (res.data is Map ? (res.data['message'] ?? res.data['error']) : null)
+          ?? 'Incorrect current password';
+      print('_checkCurrentPassword error: $msg');
+    }
+  }
+
+  final supabase = Supabase.instance.client;
+
+  Future<void> _requestEmailChangeOtp(String newEmail) async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception("Not logged in");
+
+    final currentPassword = _passwordController.text.trim();
+    if (currentPassword.isEmpty) throw Exception("Password is required");
+
+    final res = await supabase.functions.invoke(
+      'change-email-otp', // ✅ send function
+      body: {
+        'professor_id': userId,
+        'current_password': currentPassword,
+        'new_email': newEmail,
+      },
+    );
+
+    if (res.status != 200) {
+      final msg = (res.data is Map && res.data['message'] != null)
+          ? res.data['message']
+          : (res.data is Map ? (res.data['error'] ?? res.data['message']) : null) ?? 'Failed to send OTP';
+      throw Exception(msg);
+    }
+  }
+
+  Future<void> _verifyEmailChangeOtp(String otp) async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception("Not logged in");
+
+    final res = await supabase.functions.invoke(
+      'change-email-otp-verify', // ✅ verify function
+      body: {
+        'professor_id': userId,
+        'otp': otp,
+      },
+    );
+
+    if (res.status != 200) {
+      final msg = (res.data is Map && res.data['message'] != null)
+          ? res.data['message']
+          : (res.data is Map ? (res.data['error'] ?? res.data['message']) : null) ?? 'OTP verification failed';
+      throw Exception(msg);
+    }
+  }
+
+  /// shows OTP modal; returns true if verified
+  Future<bool> _showOtpModal({
+    required String email,
+    required Future<void> Function() onResend,
+    required Future<void> Function(String otp) onVerify,
+    int cooldownSeconds = 60,
+  }) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _OtpDialog(
+        email: email,
+        cooldownSeconds: cooldownSeconds,
+        onResend: onResend,
+        onVerify: onVerify,
+      ),
+    );
+
+    return ok == true;
+  }
+
+  /// simple snack helper
+  void _toast(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg)),
+    );
+  }
+
   // step control
   int step = 1;
 
@@ -54,14 +158,35 @@ class _ChangeEmailState extends State<ChangeEmail> {
 
   InputDecoration _input(String hint, {Widget? suffix}) {
     return InputDecoration(
+      errorText: (_pwError != null) ? 'Password incorrect'! : null,
       hintText: hint,
       hintStyle: const TextStyle(fontSize: 12),
       filled: true,
       fillColor: const Color(0xFFEAEAEA),
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: BorderSide.none,
+      enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(
+              color: Colors.grey
+          )
+      ),
+      focusedBorder: OutlineInputBorder(  // Change color of the border when clicked
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(
+              color: Colors.black
+          )
+      ),
+      errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(
+              color: Colors.blue
+          )
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(
+            color: Colors.red
+        ),
       ),
       suffixIcon: suffix,
     );
@@ -226,12 +351,30 @@ class _ChangeEmailState extends State<ChangeEmail> {
               side: BorderSide.none,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
-            onPressed: () {
-              if (_pwFormKey.currentState!.validate()) {
-                // In real app: reauthenticate here
+            onPressed: _checkingPw
+                ? null
+                : () async {
+              if (!_pwFormKey.currentState!.validate()) return;
+
+              setState(() {
+                _checkingPw = true;
+                _pwError = null;
+              });
+
+              try {
+                await _checkCurrentPassword(); // ✅ validates on server
+
+                if (!mounted) return;
                 setState(() => step = 2);
+              } catch (e) {
+                final msg = e.toString().replaceFirst('Exception: ', '');
+                if (!mounted) return;
+                setState(() => _pwError = msg);
+              } finally {
+                if (mounted) setState(() => _checkingPw = false);
               }
             },
+
             child: const Text('Next', style: TextStyle(color: Colors.white)),
           ),
         ),
@@ -308,23 +451,55 @@ class _ChangeEmailState extends State<ChangeEmail> {
               side: BorderSide.none,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
-            onPressed: saving
-                ? null
-                : () async {
+            onPressed: saving ? null : () async {
               if (!_emailFormKey.currentState!.validate()) return;
 
+              final newEmail = _newEmailController.text.trim().toLowerCase();
+
+              if (_passwordController.text.trim().isEmpty) {
+                _toast("Please enter your password first.");
+                setState(() => step = 1);
+                return;
+              }
+
+              if (newEmail == widget.currentEmail.trim().toLowerCase()) {
+                _toast("New email must be different from current email.");
+                return;
+              }
+
               setState(() => saving = true);
+              try {
+                // 1) send OTP to new email (server verifies password)
+                await _requestEmailChangeOtp(newEmail);
 
-              // simulate update call
-              await Future.delayed(const Duration(milliseconds: 700));
+                if (!mounted) return;
 
-              if (!mounted) return;
-              setState(() => saving = false);
+                // 2) OTP modal
+                final verified = await _showOtpModal(
+                  email: newEmail,
+                  cooldownSeconds: 60,
+                  onResend: () => _requestEmailChangeOtp(newEmail),
+                  onVerify: (otp) => _verifyEmailChangeOtp(otp),
+                );
 
-              await _showSuccess();
-              if (!mounted) return;
-              Navigator.pop(context, _newEmailController.text.trim());
+                if (!mounted) return;
+                if (!verified) return;
+
+                // 3) refresh session (optional)
+                await supabase.auth.refreshSession();
+
+                if (!mounted) return;
+                await _showSuccess();
+                if (!mounted) return;
+
+                Navigator.pop(context, newEmail);
+              } catch (e) {
+                _toast(e.toString().replaceFirst('Exception: ', ''));
+              } finally {
+                if (mounted) setState(() => saving = false);
+              }
             },
+
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -345,6 +520,205 @@ class _ChangeEmailState extends State<ChangeEmail> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _OtpDialog extends StatefulWidget {
+  final String email;
+  final int cooldownSeconds;
+  final Future<void> Function() onResend;
+  final Future<void> Function(String otp) onVerify;
+
+  const _OtpDialog({
+    required this.email,
+    required this.cooldownSeconds,
+    required this.onResend,
+    required this.onVerify,
+  });
+
+  @override
+  State<_OtpDialog> createState() => _OtpDialogState();
+}
+
+class _OtpDialogState extends State<_OtpDialog> {
+  final _otp = TextEditingController();
+  Timer? _t;
+  int _left = 0;
+
+  bool _verifying = false;
+  bool _resending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _startCooldown(widget.cooldownSeconds);
+  }
+
+  @override
+  void dispose() {
+    _t?.cancel();
+    _otp.dispose();
+    super.dispose();
+  }
+
+  void _startCooldown(int seconds) {
+    _t?.cancel();
+    setState(() => _left = seconds);
+    _t = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      if (_left <= 1) {
+        timer.cancel();
+        setState(() => _left = 0);
+      } else {
+        setState(() => _left -= 1);
+      }
+    });
+  }
+
+  String get _otpValue => _otp.text.trim();
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Enter OTP',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'We sent a 6-digit OTP to your email.\nPlease enter it below.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12),
+            ),
+            const SizedBox(height: 14),
+
+            // OTP "box"
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEAEAEA),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: TextField(
+                controller: _otp,
+                keyboardType: TextInputType.number,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 18,
+                  letterSpacing: 6,
+                  fontWeight: FontWeight.w600,
+                ),
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(6),
+                ],
+                decoration: const InputDecoration(
+                  border: InputBorder.none,
+                  hintText: '000000',
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 14),
+
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.black87,
+                      side: const BorderSide(color: Color(0xFFDDDDDD)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    onPressed: _verifying ? null : () => Navigator.pop(context, false),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF004280),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      elevation: 0,
+                    ),
+                    onPressed: (_verifying || _otpValue.length != 6)
+                        ? null
+                        : () async {
+                      setState(() => _verifying = true);
+                      try {
+                        await widget.onVerify(_otpValue);
+                        if (!mounted) return;
+                        Navigator.pop(context, true);
+                      } catch (e) {
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+                        );
+                      } finally {
+                        if (mounted) setState(() => _verifying = false);
+                      }
+                    },
+                    child: _verifying
+                        ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                        : const Text('Verify', style: TextStyle(color: Colors.white)),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 10),
+
+            // Resend with cooldown
+            InkWell(
+              onTap: (_left > 0 || _resending)
+                  ? null
+                  : () async {
+                setState(() => _resending = true);
+                try {
+                  await widget.onResend();
+                  if (!mounted) return;
+                  _startCooldown(widget.cooldownSeconds);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('OTP resent. Please check your email.')),
+                  );
+                } catch (e) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+                  );
+                } finally {
+                  if (mounted) setState(() => _resending = false);
+                }
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Text(
+                  _left > 0 ? 'Resend OTP (${_left}s)' : 'Resend OTP',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: (_left > 0) ? Colors.grey : const Color(0xFF004280),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

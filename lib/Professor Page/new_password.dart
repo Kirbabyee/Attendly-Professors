@@ -1,14 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'login.dart';
 
 class NewPassword extends StatefulWidget {
-  const NewPassword({super.key});
+  final String userId;
+  final String otp;
+
+  const NewPassword({
+    super.key,
+    required this.userId,
+    required this.otp,
+  });
 
   @override
   State<NewPassword> createState() => _NewPasswordState();
 }
+
 
 class _NewPasswordState extends State<NewPassword> {
   Future<void> _showLoading() async {
@@ -27,7 +36,9 @@ class _NewPasswordState extends State<NewPassword> {
     return null; // ✅ valid
   }
 
-  bool showPassword = true;
+  bool showNewPassword = true;
+  bool showConfirmPassword = true;
+
   final _formKey = GlobalKey<FormState>();
 
   final _newPasswordController = TextEditingController();
@@ -41,41 +52,70 @@ class _NewPasswordState extends State<NewPassword> {
   }
 
   Future<void> _handlePasswordChange() async {
-    // 1. Show loading
+    if (!_formKey.currentState!.validate()) return;
+
+    print('user id:' + widget.userId);
+    final newPass = _newPasswordController.text.trim();
+
     await _showLoading();
+    try {
+      final res = await Supabase.instance.client.functions.invoke(
+        'prof-verify-otp-and-change-password',
+        body: {
+          'professor_id': widget.userId,
+          'otp': widget.otp,
+          'new_password': newPass,
+        },
+      );
+      Navigator.pop(context); // close loading
 
-    // 2. Fake delay (replace with API call in real app)
-    await Future.delayed(const Duration(seconds: 2));
-
-    // 3. Close loading
-    Navigator.pop(context);
-
-    // 4. Show success dialog
-    await showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          title: Icon(Icons.check_circle_outline, color: Colors.green, size: 50,),
-          content: const Text(
-            'Your password has been changed successfully.',
-            textAlign: TextAlign.center,
+      final data = res.data;
+      if (data == null || data['success'] != true) {
+        final msg = "${data?['step'] ?? 'error'}: ${data?['message'] ?? 'Failed'}";
+        await showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text("Error"),
+            content: Text(msg),
           ),
         );
-      },
-    );
+        return;
+      }
 
-    if (!mounted) return;
+      // success dialog
+      await showDialog(
+        context: context,
+        barrierDismissible: true,
+        builder: (context) {
+          return AlertDialog(
+            backgroundColor: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            title: const Icon(Icons.check_circle_outline, color: Colors.green, size: 50),
+            content: const Text(
+              'Your password has been changed successfully.',
+              textAlign: TextAlign.center,
+            ),
+          );
+        },
+      );
 
-    // 5. Go to login
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const Login()),
-    );
+      if (!mounted) return;
+
+      // go to login
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const Login()),
+      );
+    } catch (e) {
+      Navigator.pop(context); // close loading
+      await showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text("Error"),
+          content: Text("Error: $e"),
+        ),
+      );
+    }
   }
-
-
 
   @override
   Widget build(BuildContext context) {
@@ -155,7 +195,7 @@ class _NewPasswordState extends State<NewPassword> {
                           height: screenHeight > 370 ? 55 : 48,
                           width: 300,
                           child: TextFormField( // Input box
-                            obscureText: showPassword,
+                            obscureText: showNewPassword,
                             controller: _newPasswordController,
                             style: TextStyle(fontSize: 14),
                             keyboardType: TextInputType.emailAddress,
@@ -177,10 +217,10 @@ class _NewPasswordState extends State<NewPassword> {
                               suffixIcon: IconButton(
                                 onPressed: () {
                                   setState(() {
-                                    showPassword = !showPassword;
+                                    showNewPassword = !showNewPassword;
                                   });
                                 },
-                                icon: Icon(!showPassword ? Icons.visibility : Icons.visibility_off)
+                                icon: Icon(!showNewPassword ? Icons.visibility : Icons.visibility_off)
                               ),
                               contentPadding: const EdgeInsets.symmetric( // Add padding
                                 horizontal: 10,
@@ -236,7 +276,7 @@ class _NewPasswordState extends State<NewPassword> {
                           height: screenHeight > 370 ? 55 : 48,
                           width: 300,
                           child: TextFormField( // Input box
-                            obscureText: showPassword,
+                            obscureText: showConfirmPassword,
                             controller: _confirmPasswordController,
                             style: TextStyle(fontSize: 14),
                             keyboardType: TextInputType.emailAddress,
@@ -258,10 +298,10 @@ class _NewPasswordState extends State<NewPassword> {
                               suffixIcon: IconButton(
                                 onPressed: () {
                                   setState(() {
-                                    showPassword = !showPassword;
+                                    showConfirmPassword = !showConfirmPassword;
                                   });
                                 },
-                                icon: Icon(!showPassword ? Icons.visibility : Icons.visibility_off)
+                                icon: Icon(!showConfirmPassword ? Icons.visibility : Icons.visibility_off)
                               ),
                               contentPadding: const EdgeInsets.symmetric( // Add padding
                                 horizontal: 10,
@@ -318,15 +358,15 @@ class _NewPasswordState extends State<NewPassword> {
                       onPressed: () {
                         if (_formKey.currentState!.validate()) {
                           _handlePasswordChange();
+
+                          print('user id:' + widget.userId);
                         }
                       },
 
                       child: Text(
-                        'Email Me',
-                        style: TextStyle(
-                          color: Colors.white,
-                        ),
-                      )
+                        'Change Password',
+                        style: TextStyle(color: Colors.white),
+                      ),
                     ),
                   ) : Container(),
                 ],

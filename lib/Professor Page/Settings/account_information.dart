@@ -518,11 +518,25 @@ class _AccountInformationState extends State<AccountInformation> {
                                     ),
                                   );
 
-                                  if (newEmail != null && newEmail.trim().isNotEmpty) {
-                                    setState(() {
-                                      _email = newEmail.trim();
-                                    });
-                                  }
+                                  final clean = (newEmail ?? '').trim().toLowerCase();
+                                  if (clean.isEmpty) return;
+
+                                  // ✅ update UI immediately
+                                  final fresh = {
+                                    ...?_professor,
+                                    'email': clean,
+                                  };
+
+                                  ProfessorSession.set(fresh); // ✅ update cache so next open is updated
+
+                                  if (!mounted) return;
+                                  setState(() {
+                                    _professor = fresh;
+                                    _email = clean;
+                                  });
+
+                                  // ✅ optional: re-fetch from DB to guarantee consistency (recommended)
+                                  await _loadProfessor();
                                 },
                                 child: Text(
                                   'Change Email?',

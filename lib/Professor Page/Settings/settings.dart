@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../Notifications/push_manager.dart';
 import '../professor_session.dart';
+import 'change_email.dart';
 import 'privacy_policy.dart';
 
 class Settings extends StatefulWidget {
@@ -17,8 +18,9 @@ class _SettingsState extends State<Settings> {
   @override
   void initState() {
     super.initState();
-    _loadProfessor();
+    _loadProfessor(force: true); // ✅ always force when opening settings
   }
+  bool _notifBusy = false;
 
   Map<String, dynamic>? _professor;
   bool _loadingProfessor = true;
@@ -31,13 +33,18 @@ class _SettingsState extends State<Settings> {
     });
 
     try {
-      final s = await ProfessorSession.get(force: force); // ✅ use force
+      final s = await ProfessorSession.get(force: force);
       if (!mounted) return;
+
       setState(() {
         _professor = s;
         isNotificationOn = (s?['push_enabled'] as bool?) ?? false;
         _loadingProfessor = false;
       });
+
+      // ✅ enforce: professors.push_enabled => device_tokens rows
+      await PushManager.syncFromDb();
+
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -96,7 +103,6 @@ class _SettingsState extends State<Settings> {
 
   @override
   Widget build(BuildContext context) {
-    bool _notifBusy = false;
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
     return Scaffold(
@@ -251,9 +257,9 @@ class _SettingsState extends State<Settings> {
                                 Transform.scale(
                                   scale: screenHeight * .001,
                                   child: Switch(
+                                    activeTrackColor: Color(0xFF004280),
                                     value: isNotificationOn,
-                                    onChanged: (value) async {
-                                      // 1️⃣ confirm muna
+                                    onChanged: _notifBusy ? null : (value) async {
                                       final ok = await showDialog<bool>(
                                         context: context,
                                         barrierDismissible: true,
@@ -280,28 +286,27 @@ class _SettingsState extends State<Settings> {
                                       if (ok != true) return;
 
                                       final prev = isNotificationOn;
-                                      setState(() => isNotificationOn = value);
+                                      setState(() {
+                                        _notifBusy = true;
+                                        isNotificationOn = value;
+                                      });
 
                                       final profId = _professor?['id']?.toString();
                                       if (profId == null) return;
 
                                       try {
-                                        final professorId = _professor?['id']?.toString(); // professors.id
-                                        if (professorId == null) return;
+                                        await PushManager.setEnabled(enabled: value); // ✅ DB truth
 
-                                        await PushManager.enableAndRegisterToken(
-                                          professorId: professorId,
-                                          enabled: value,
-                                        );
+                                        await _loadProfessor(force: true); // ✅ refresh UI from DB
 
-                                        print(await FirebaseMessaging.instance.getToken());
                                       } catch (e) {
-                                        // revert if failed
                                         if (!mounted) return;
                                         setState(() => isNotificationOn = prev);
                                         ScaffoldMessenger.of(context).showSnackBar(
                                           SnackBar(content: Text('Failed to update notifications: $e')),
                                         );
+                                      } finally {
+                                        if (mounted) setState(() => _notifBusy = false);
                                       }
                                     },
                                   )
@@ -339,8 +344,9 @@ class _SettingsState extends State<Settings> {
                             ],
                           ),
                           SizedBox(height: screenHeight * .013),
+
                           OutlinedButton(
-                            onPressed: () {
+                            onPressed: () async {
                               Navigator.pushNamed(context, '/change_password');
                             },
                             style: OutlinedButton.styleFrom(
@@ -348,7 +354,7 @@ class _SettingsState extends State<Settings> {
                                 borderRadius: BorderRadiusGeometry.circular(8),
                               ),
                               side: BorderSide.none,
-                              backgroundColor: Color(0x90D9D9D9),
+                              backgroundColor: const Color(0x90D9D9D9),
                             ),
                             child: Padding(
                               padding: EdgeInsets.symmetric(vertical: screenHeight * .013),
@@ -664,6 +670,7 @@ class _SettingsState extends State<Settings> {
 
                         try {
                           // ✅ ito na yung tunay na “delay”
+                          try { await FirebaseMessaging.instance.deleteToken(); } catch (_) {}
                           await Supabase.instance.client.auth.signOut();
                           ProfessorSession.clear();
 

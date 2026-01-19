@@ -19,10 +19,10 @@ import 'firebase_options.dart';
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
-   await NotificationsService.init();
-  /*final title = message.notification?.title ?? 'Attendly';
+ await NotificationsService.init();
+  final title = message.notification?.title ?? 'Attendly';
   final body = message.notification?.body ?? '';
-  await NotificationsService.show(title: title, body: body);*/
+  await NotificationsService.show(title: title, body: body);
 }
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -64,7 +64,6 @@ class MyApp extends StatelessWidget {
         '/account_information': (context) => AccountInformation(),
         '/change_password': (context) => ChangePassword(),
         '/forgot_password': (context) => ForgotPassword(),
-        '/new_password': (context) => NewPassword(),
         '/mainshell': (context) => Mainshell(),
       },
     );
