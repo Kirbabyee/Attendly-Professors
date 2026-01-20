@@ -362,7 +362,7 @@ class _LoginState extends State<Login> {
                             // To check if the account is for student
                             final profRow = await supabase
                                 .from('professors')
-                                .select('id, push_enabled')
+                                .select('id, terms_conditions')
                                 .eq('id', uid)
                                 .maybeSingle();
 
@@ -392,9 +392,23 @@ class _LoginState extends State<Login> {
                             ProfessorSession.clear();
                             await ProfessorSession.get(force: true);
 
+                            final raw = profRow?['terms_conditions'];
+                            final terms = (raw is num) ? raw.toInt() : int.tryParse('$raw') ?? 0;
+
                             if (!mounted) return;
-                            Navigator.pop(context);
-                            Navigator.of(context).pushNamedAndRemoveUntil('/mainshell', (route) => false);
+                            if (terms != 1) {
+                              Navigator.of(context).pushNamedAndRemoveUntil(
+                                '/terms_conditions',
+                                    (route) => false,
+                              );
+                              return;
+                            }
+
+                            Navigator.of(context).pushNamedAndRemoveUntil(
+                              '/mainshell',
+                                  (route) => false,
+                            );
+                            return;
                           } on AuthException catch (e) {
                             if (!mounted) return;
                             Navigator.pop(context);

@@ -4,6 +4,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:professor/Professor%20Page/mainshell.dart';
 import 'package:professor/Professor%20Page/new_password.dart';
+import 'package:professor/Professor%20Page/terms_and_conditions.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'Professor Page/History/history.dart';
@@ -52,6 +53,7 @@ class MyApp extends StatelessWidget {
         '/forgot_password': (context) => ForgotPassword(),
         '/mainshell': (context) => Mainshell(),
         '/new_password': (context) => NewPassword(),
+        '/terms_conditions': (context) => ProfTermsAndConditionsPage(),
       },
     );
   }

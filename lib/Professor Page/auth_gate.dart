@@ -5,7 +5,6 @@ import 'professor_session.dart';
 
 import '../main.dart'; // LandingPage
 import 'mainshell.dart';
-import 'login.dart';
 
 class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
@@ -19,6 +18,8 @@ class _AuthGateState extends State<AuthGate> with SingleTickerProviderStateMixin
   late final StreamSubscription<AuthState> _sub;
 
   bool _loading = true;
+  bool _routing = false;
+
   final Duration _minSplashDuration = const Duration(milliseconds: 2500);
   late final DateTime _start;
 
@@ -28,7 +29,6 @@ class _AuthGateState extends State<AuthGate> with SingleTickerProviderStateMixin
   @override
   void initState() {
     super.initState();
-    _initAfterLogin();
     _start = DateTime.now();
 
     _logoCtrl = AnimationController(
@@ -45,9 +45,8 @@ class _AuthGateState extends State<AuthGate> with SingleTickerProviderStateMixin
 
       final session = data.session;
 
-      // ✅ preload student when logged in
       if (session != null) {
-        ProfessorSession.clear(); // important when switching accounts
+        ProfessorSession.clear();
         try {
           await ProfessorSession.get(force: true);
         } catch (_) {}
@@ -58,15 +57,14 @@ class _AuthGateState extends State<AuthGate> with SingleTickerProviderStateMixin
       await _finishSplash();
       if (!mounted) return;
 
-      _go(session);
+      await _go(session);
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final session = supabase.auth.currentSession;
 
-      // ✅ preload student when app starts + already logged in
       if (session != null) {
-        ProfessorSession.clear(); // safety
+        ProfessorSession.clear();
         try {
           await ProfessorSession.get(force: true);
         } catch (_) {}
@@ -77,7 +75,7 @@ class _AuthGateState extends State<AuthGate> with SingleTickerProviderStateMixin
       await _finishSplash();
       if (!mounted) return;
 
-      _go(session);
+      await _go(session);
     });
   }
 
@@ -91,21 +89,59 @@ class _AuthGateState extends State<AuthGate> with SingleTickerProviderStateMixin
     setState(() => _loading = false);
   }
 
-  void _go(Session? session) {
-    // if logged in -> mainshell
-    if (session != null) {
+  Future<void> _go(Session? session) async {
+    if (_routing) return;
+    _routing = true;
+
+    try {
+      // ✅ logged out → landing
+      if (session == null) {
+        if (!mounted) return;
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LandingPage()),
+              (route) => false,
+        );
+        return;
+      }
+
+      // ✅ logged in: check professors.terms_conditions
+      int terms = 0;
+
+      try {
+        final row = await supabase
+            .from('professors')
+            .select('terms_conditions')
+            .eq('id', session.user.id)
+            .maybeSingle();
+
+        final raw = row?['terms_conditions'];
+        terms = (raw is num) ? raw.toInt() : int.tryParse('$raw') ?? 0;
+      } catch (_) {
+        terms = 0; // safe default: not accepted
+      }
+
+      // ✅ if not accepted → sign out then go Landing/Login
+      if (terms != 1) {
+        await supabase.auth.signOut();
+        ProfessorSession.clear();
+
+        if (!mounted) return;
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LandingPage()),
+              (route) => false,
+        );
+        return;
+      }
+
+      // ✅ accepted → go mainshell
+      if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const Mainshell()),
             (route) => false,
       );
-      return;
+    } finally {
+      _routing = false;
     }
-
-    // logged out -> LandingPage (or Login if gusto mo)
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const LandingPage()),
-          (route) => false,
-    );
   }
 
   @override
@@ -114,18 +150,10 @@ class _AuthGateState extends State<AuthGate> with SingleTickerProviderStateMixin
     _logoCtrl.dispose();
     super.dispose();
   }
-  bool _pushReady = false;
-  Future<void> _initAfterLogin() async {
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user == null) return;
 
-    if (_pushReady) return;
-
-    _pushReady = true;
-  }
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
+    if (_loading || _routing) {
       return Scaffold(
         backgroundColor: const Color(0xFFEAF5FB),
         body: Center(
@@ -134,10 +162,7 @@ class _AuthGateState extends State<AuthGate> with SingleTickerProviderStateMixin
             children: [
               ScaleTransition(
                 scale: _scale,
-                child: Image.asset(
-                  'assets/logo.png',
-                  width: 180,
-                ),
+                child: Image.asset('assets/logo.png', width: 180),
               ),
               const SizedBox(height: 18),
               const SizedBox(
@@ -146,9 +171,9 @@ class _AuthGateState extends State<AuthGate> with SingleTickerProviderStateMixin
                 child: CircularProgressIndicator(strokeWidth: 2),
               ),
               const SizedBox(height: 12),
-              const Text(
-                'Loading Attendly...',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+              Text(
+                _routing ? 'Checking your account...' : 'Loading Attendly...',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
               ),
             ],
           ),
@@ -156,6 +181,9 @@ class _AuthGateState extends State<AuthGate> with SingleTickerProviderStateMixin
       );
     }
 
-    return const SizedBox.shrink();
+    return const Scaffold(
+      backgroundColor: Color(0xFFEAF5FB),
+      body: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+    );
   }
 }
