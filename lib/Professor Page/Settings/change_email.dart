@@ -18,9 +18,54 @@ class ChangeEmail extends StatefulWidget {
 }
 
 class _ChangeEmailState extends State<ChangeEmail> {
-  String? _pwError;
+  final supabase = Supabase.instance.client;
+
+  // step control
+  int step = 1;
+
+  bool showPassword = false;
+  bool saving = false;
   bool _checkingPw = false;
 
+  String? _pwError;
+
+  final _pwFormKey = GlobalKey<FormState>();
+  final _emailFormKey = GlobalKey<FormState>();
+
+  final _passwordController = TextEditingController();
+  final _newEmailController = TextEditingController();
+  final _confirmEmailController = TextEditingController();
+
+  @override
+  void dispose() {
+    _passwordController.dispose();
+    _newEmailController.dispose();
+    _confirmEmailController.dispose();
+    super.dispose();
+  }
+
+  void _toast(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  Future<void> _showSuccess() async {
+    await showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: const Icon(Icons.check_circle_outline, color: Colors.green, size: 60),
+        content: const Text(
+          'Your email has been changed successfully.',
+          textAlign: TextAlign.center,
+        ),
+      ),
+    );
+  }
+
+  // ✅ Step 1: check password
   Future<void> _checkCurrentPassword() async {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) throw Exception("Not logged in");
@@ -39,21 +84,18 @@ class _ChangeEmailState extends State<ChangeEmail> {
     if (res.status != 200) {
       final msg = (res.data is Map ? (res.data['message'] ?? res.data['error']) : null)
           ?? 'Incorrect current password';
-      print('_checkCurrentPassword error: $msg');
+      throw Exception(msg);
     }
   }
 
-  final supabase = Supabase.instance.client;
-
-  Future<void> _requestEmailChangeOtp(String newEmail) async {
+  // ✅ Step 2: send otp to new email
+  Future<void> _sendOtpToNewEmail(String newEmail) async {
+    final currentPassword = _passwordController.text.trim();
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) throw Exception("Not logged in");
 
-    final currentPassword = _passwordController.text.trim();
-    if (currentPassword.isEmpty) throw Exception("Password is required");
-
     final res = await supabase.functions.invoke(
-      'change-email-otp', // ✅ send function
+      'change-email-otp',
       body: {
         'professor_id': userId,
         'current_password': currentPassword,
@@ -62,19 +104,19 @@ class _ChangeEmailState extends State<ChangeEmail> {
     );
 
     if (res.status != 200) {
-      final msg = (res.data is Map && res.data['message'] != null)
-          ? res.data['message']
-          : (res.data is Map ? (res.data['error'] ?? res.data['message']) : null) ?? 'Failed to send OTP';
+      final msg = (res.data is Map ? (res.data['message'] ?? res.data['error']) : null)
+          ?? 'Failed to send OTP';
       throw Exception(msg);
     }
   }
 
-  Future<void> _verifyEmailChangeOtp(String otp) async {
+  // ✅ verify otp + update professors table only
+  Future<void> _verifyOtpAndChangeprofessorsEmail(String otp) async {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) throw Exception("Not logged in");
 
     final res = await supabase.functions.invoke(
-      'change-email-otp-verify', // ✅ verify function
+      'change-email-otp-verify',
       body: {
         'professor_id': userId,
         'otp': otp,
@@ -82,14 +124,12 @@ class _ChangeEmailState extends State<ChangeEmail> {
     );
 
     if (res.status != 200) {
-      final msg = (res.data is Map && res.data['message'] != null)
-          ? res.data['message']
-          : (res.data is Map ? (res.data['error'] ?? res.data['message']) : null) ?? 'OTP verification failed';
+      final msg = (res.data is Map ? (res.data['message'] ?? res.data['error']) : null)
+          ?? 'OTP verification failed';
       throw Exception(msg);
     }
   }
 
-  /// shows OTP modal; returns true if verified
   Future<bool> _showOtpModal({
     required String email,
     required Future<void> Function() onResend,
@@ -106,88 +146,21 @@ class _ChangeEmailState extends State<ChangeEmail> {
         onVerify: onVerify,
       ),
     );
-
     return ok == true;
   }
 
-  /// simple snack helper
-  void _toast(String msg) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg)),
-    );
-  }
-
-  // step control
-  int step = 1;
-
-  bool showPassword = false;
-  bool saving = false;
-
-  final _pwFormKey = GlobalKey<FormState>();
-  final _emailFormKey = GlobalKey<FormState>();
-
-  final _passwordController = TextEditingController();
-  final _newEmailController = TextEditingController();
-  final _confirmEmailController = TextEditingController();
-
-  @override
-  void dispose() {
-    _passwordController.dispose();
-    _newEmailController.dispose();
-    _confirmEmailController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _showSuccess() async {
-    await showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (_) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        title: Column(
-          children: [
-            Icon(Icons.check_circle_outline, color: Colors.green, size: 60,),
-          ],
-        ),
-        content: const Text('Your email has been changed successfully.', textAlign: TextAlign.center,),
-      ),
-    );
-  }
-
-  InputDecoration _input(String hint, {Widget? suffix}) {
+  InputDecoration _input(String hint, {Widget? suffix, String? errorText}) {
     return InputDecoration(
-      errorText: (_pwError != null) ? 'Password incorrect'! : null,
       hintText: hint,
       hintStyle: const TextStyle(fontSize: 12),
       filled: true,
       fillColor: const Color(0xFFEAEAEA),
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(
-              color: Colors.grey
-          )
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: BorderSide.none,
       ),
-      focusedBorder: OutlineInputBorder(  // Change color of the border when clicked
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(
-              color: Colors.black
-          )
-      ),
-      errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(
-              color: Colors.blue
-          )
-      ),
-      focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(
-            color: Colors.red
-        ),
-      ),
+      errorText: errorText, // ✅ null = no error
       suffixIcon: suffix,
     );
   }
@@ -226,17 +199,10 @@ class _ChangeEmailState extends State<ChangeEmail> {
                     children: [
                       Text(
                         'Change Email',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w500,
-                          color: Colors.white,
-                          fontSize: 15,
-                        ),
+                        style: TextStyle(fontWeight: FontWeight.w500, color: Colors.white, fontSize: 15),
                       ),
                       SizedBox(height: 6),
-                      Text(
-                        'Manage your email',
-                        style: TextStyle(fontSize: 11, color: Colors.white),
-                      ),
+                      Text('Manage your email', style: TextStyle(fontSize: 11, color: Colors.white)),
                     ],
                   ),
                 ],
@@ -260,7 +226,7 @@ class _ChangeEmailState extends State<ChangeEmail> {
                     },
                     icon: const Icon(CupertinoIcons.arrow_left),
                   ),
-                  Text(step == 1 ? 'Back' : 'Back to password'),
+                  Text('Back'),
                 ],
               ),
             ),
@@ -278,9 +244,7 @@ class _ChangeEmailState extends State<ChangeEmail> {
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(8),
-                      boxShadow: const [
-                        BoxShadow(color: Colors.black26, blurRadius: 2, offset: Offset(0, 5)),
-                      ],
+                      boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2, offset: Offset(0, 5))],
                     ),
                     child: step == 1 ? _passwordStep() : _emailStep(),
                   ),
@@ -298,17 +262,9 @@ class _ChangeEmailState extends State<ChangeEmail> {
 
     return Column(
       children: [
-        const Text(
-          'Confirm your password',
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-          textAlign: TextAlign.center,
-        ),
+        const Text('Confirm your password', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
         const SizedBox(height: 6),
-        const Text(
-          'For security, enter your password to continue.',
-          style: TextStyle(fontSize: 12),
-          textAlign: TextAlign.center,
-        ),
+        const Text('For security, enter your password to continue.', style: TextStyle(fontSize: 12), textAlign: TextAlign.center),
         const SizedBox(height: 18),
 
         Form(
@@ -316,14 +272,18 @@ class _ChangeEmailState extends State<ChangeEmail> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Password', style: TextStyle(fontSize: 12)),
+              Text('Password', style: TextStyle(fontSize: 12)),
               const SizedBox(height: 6),
               TextFormField(
                 controller: _passwordController,
                 obscureText: !showPassword,
                 style: const TextStyle(fontSize: 12),
+                onChanged: (_) {
+                  if (_pwError != null) setState(() => _pwError = null);
+                },
                 decoration: _input(
                   'Enter your password',
+                  errorText: _pwError, // ✅ only shows when server says incorrect
                   suffix: IconButton(
                     onPressed: () => setState(() => showPassword = !showPassword),
                     icon: Icon(showPassword ? Icons.visibility : Icons.visibility_off, size: 18),
@@ -362,7 +322,7 @@ class _ChangeEmailState extends State<ChangeEmail> {
               });
 
               try {
-                await _checkCurrentPassword(); // ✅ validates on server
+                await _checkCurrentPassword(); // ✅ server validates
 
                 if (!mounted) return;
                 setState(() => step = 2);
@@ -374,8 +334,9 @@ class _ChangeEmailState extends State<ChangeEmail> {
                 if (mounted) setState(() => _checkingPw = false);
               }
             },
-
-            child: const Text('Next', style: TextStyle(color: Colors.white)),
+            child: _checkingPw
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Text('Next', style: TextStyle(color: Colors.white)),
           ),
         ),
       ],
@@ -387,17 +348,9 @@ class _ChangeEmailState extends State<ChangeEmail> {
 
     return Column(
       children: [
-        const Text(
-          'Enter your new email',
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-          textAlign: TextAlign.center,
-        ),
+        const Text('Enter your new email', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
         const SizedBox(height: 6),
-        const Text(
-          'Make sure you can access this email.',
-          style: TextStyle(fontSize: 12),
-          textAlign: TextAlign.center,
-        ),
+        const Text('Make sure you can access this email.', style: TextStyle(fontSize: 12), textAlign: TextAlign.center),
         const SizedBox(height: 18),
 
         Form(
@@ -417,6 +370,9 @@ class _ChangeEmailState extends State<ChangeEmail> {
                   if (v.isEmpty) return 'Email is required';
                   final emailOk = RegExp(r'^[^@]+@[^@]+\.[^@]+$').hasMatch(v);
                   if (!emailOk) return 'Enter a valid email';
+                  if (v.toLowerCase() == widget.currentEmail.trim().toLowerCase()) {
+                    return 'New email must be different';
+                  }
                   return null;
                 },
               ),
@@ -431,8 +387,10 @@ class _ChangeEmailState extends State<ChangeEmail> {
                 decoration: _input('Re-enter new email'),
                 validator: (value) {
                   final v = (value ?? '').trim();
-                  if (v.isEmpty && !_newEmailController.text.trim().isEmpty) return 'Confirm your email';
-                  if (v != _newEmailController.text.trim()) return 'Emails do not match';
+                  if (v.isEmpty) return 'Confirm your email';
+                  if (v.trim().toLowerCase() != _newEmailController.text.trim().toLowerCase()) {
+                    return 'Emails do not match';
+                  }
                   return null;
                 },
               ),
@@ -451,26 +409,17 @@ class _ChangeEmailState extends State<ChangeEmail> {
               side: BorderSide.none,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
-            onPressed: saving ? null : () async {
+            onPressed: saving
+                ? null
+                : () async {
               if (!_emailFormKey.currentState!.validate()) return;
 
               final newEmail = _newEmailController.text.trim().toLowerCase();
 
-              if (_passwordController.text.trim().isEmpty) {
-                _toast("Please enter your password first.");
-                setState(() => step = 1);
-                return;
-              }
-
-              if (newEmail == widget.currentEmail.trim().toLowerCase()) {
-                _toast("New email must be different from current email.");
-                return;
-              }
-
               setState(() => saving = true);
               try {
-                // 1) send OTP to new email (server verifies password)
-                await _requestEmailChangeOtp(newEmail);
+                // 1) send otp to NEW EMAIL
+                await _sendOtpToNewEmail(newEmail);
 
                 if (!mounted) return;
 
@@ -478,20 +427,17 @@ class _ChangeEmailState extends State<ChangeEmail> {
                 final verified = await _showOtpModal(
                   email: newEmail,
                   cooldownSeconds: 60,
-                  onResend: () => _requestEmailChangeOtp(newEmail),
-                  onVerify: (otp) => _verifyEmailChangeOtp(otp),
+                  onResend: () => _sendOtpToNewEmail(newEmail),
+                  onVerify: (otp) => _verifyOtpAndChangeprofessorsEmail(otp),
                 );
 
                 if (!mounted) return;
                 if (!verified) return;
 
-                // 3) refresh session (optional)
-                await supabase.auth.refreshSession();
-
-                if (!mounted) return;
                 await _showSuccess();
                 if (!mounted) return;
 
+                // ✅ return new email to caller (AccountInformation)
                 Navigator.pop(context, newEmail);
               } catch (e) {
                 _toast(e.toString().replaceFirst('Exception: ', ''));
@@ -499,22 +445,14 @@ class _ChangeEmailState extends State<ChangeEmail> {
                 if (mounted) setState(() => saving = false);
               }
             },
-
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 if (saving) ...[
-                  const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                  ),
+                  const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
                   const SizedBox(width: 10),
                 ],
-                Text(
-                  saving ? 'Saving...' : 'Update Email',
-                  style: const TextStyle(color: Colors.white),
-                ),
+                Text(saving ? 'Saving...' : 'Update Email', style: const TextStyle(color: Colors.white)),
               ],
             ),
           ),
@@ -523,6 +461,8 @@ class _ChangeEmailState extends State<ChangeEmail> {
     );
   }
 }
+
+String? _otpError; // ✅ show warning + red border
 
 class _OtpDialog extends StatefulWidget {
   final String email;
@@ -588,10 +528,7 @@ class _OtpDialogState extends State<_OtpDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              'Enter OTP',
-              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-            ),
+            const Text('Enter OTP', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
             const SizedBox(height: 8),
             const Text(
               'We sent a 6-digit OTP to your email.\nPlease enter it below.',
@@ -600,13 +537,16 @@ class _OtpDialogState extends State<_OtpDialog> {
             ),
             const SizedBox(height: 14),
 
-            // OTP "box"
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
-                color: const Color(0xFFEAEAEA),
+                color: _otpError == null ? const Color(0xFFEAEAEA) : const Color(0xFFFFE5E5),
                 borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: _otpError == null ? Colors.transparent : Colors.red,
+                  width: 1,
+                ),
               ),
               child: TextField(
                 controller: _otp,
@@ -621,12 +561,31 @@ class _OtpDialogState extends State<_OtpDialog> {
                   FilteringTextInputFormatter.digitsOnly,
                   LengthLimitingTextInputFormatter(6),
                 ],
-                decoration: const InputDecoration(
+                onChanged: (_) {
+                  if (_otpError != null) setState(() => _otpError = null);
+                },
+                decoration: InputDecoration(
                   border: InputBorder.none,
                   hintText: '000000',
                 ),
               ),
             ),
+            if (_otpError != null) ...[
+              const SizedBox(height: 5),
+              Row(
+                children: [
+                  const Icon(Icons.error_outline, color: Colors.red, size: 16),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      '$_otpError',
+                      style: const TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+
 
             const SizedBox(height: 14),
 
@@ -660,20 +619,19 @@ class _OtpDialogState extends State<_OtpDialog> {
                         if (!mounted) return;
                         Navigator.pop(context, true);
                       } catch (e) {
+                        final msg = e.toString().replaceFirst('Exception: ', '');
+
                         if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
-                        );
+                        setState(() => _otpError = msg.isEmpty ? 'Invalid OTP' : msg);
+
+                        // optional: haptic feedback
+                        HapticFeedback.mediumImpact();
                       } finally {
                         if (mounted) setState(() => _verifying = false);
                       }
                     },
                     child: _verifying
-                        ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                         : const Text('Verify', style: TextStyle(color: Colors.white)),
                   ),
                 ),
@@ -682,7 +640,6 @@ class _OtpDialogState extends State<_OtpDialog> {
 
             const SizedBox(height: 10),
 
-            // Resend with cooldown
             InkWell(
               onTap: (_left > 0 || _resending)
                   ? null
@@ -692,9 +649,7 @@ class _OtpDialogState extends State<_OtpDialog> {
                   await widget.onResend();
                   if (!mounted) return;
                   _startCooldown(widget.cooldownSeconds);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('OTP resent. Please check your email.')),
-                  );
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('OTP resent. Please check your email.')));
                 } catch (e) {
                   if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(

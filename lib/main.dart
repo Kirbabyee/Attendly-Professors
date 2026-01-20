@@ -65,6 +65,7 @@ class MyApp extends StatelessWidget {
         '/change_password': (context) => ChangePassword(),
         '/forgot_password': (context) => ForgotPassword(),
         '/mainshell': (context) => Mainshell(),
+        '/new_password': (context) => NewPassword(),
       },
     );
   }
