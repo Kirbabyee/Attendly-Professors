@@ -7,7 +7,6 @@ import 'package:professor/Professor%20Page/new_password.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'Professor Page/History/history.dart';
-import 'Professor Page/Notifications/notification_service.dart';
 import 'Professor Page/Settings/account_information.dart';
 import 'Professor Page/Settings/change_password.dart';
 import 'Professor Page/Settings/settings.dart';
@@ -18,28 +17,15 @@ import 'firebase_options.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
- await NotificationsService.init();
-  final title = message.notification?.title ?? 'Attendly';
-  final body = message.notification?.body ?? '';
-  await NotificationsService.show(title: title, body: body);
 }
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-  await NotificationsService.init();
-
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
   await Supabase.initialize(
     url: 'https://ucfundmbawljngzowzgd.supabase.co',
     anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjZnVuZG1iYXdsam5nem93emdkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc1OTY5NDQsImV4cCI6MjA4MzE3Mjk0NH0.rPcB5ZIHZ77hR2DzXHKwJp8nF-IJH-bmICzioCma5Bk',
   );
 
-  await NotificationsService.init();
   runApp(const MyApp());
 }
 

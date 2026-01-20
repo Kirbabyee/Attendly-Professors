@@ -541,11 +541,6 @@ class _EndSessionState extends State<EndSession> {
         }).eq('class_id', widget.classId)
             .eq('status', 'started');
 
-        await supabase.functions.invoke(
-          'process_notification_queue',
-          body: {'limit': 50},
-        );
-
         await _loadData();
 
         if (!mounted) return;

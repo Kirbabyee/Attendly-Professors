@@ -2,7 +2,6 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../Notifications/push_manager.dart';
 import '../professor_session.dart';
 import 'change_email.dart';
 import 'privacy_policy.dart';
@@ -41,9 +40,6 @@ class _SettingsState extends State<Settings> {
         isNotificationOn = (s?['push_enabled'] as bool?) ?? false;
         _loadingProfessor = false;
       });
-
-      // ✅ enforce: professors.push_enabled => device_tokens rows
-      await PushManager.syncFromDb();
 
     } catch (e) {
       if (!mounted) return;
@@ -295,7 +291,6 @@ class _SettingsState extends State<Settings> {
                                       if (profId == null) return;
 
                                       try {
-                                        await PushManager.setEnabled(enabled: value); // ✅ DB truth
 
                                         await _loadProfessor(force: true); // ✅ refresh UI from DB
 
@@ -670,7 +665,6 @@ class _SettingsState extends State<Settings> {
 
                         try {
                           // ✅ ito na yung tunay na “delay”
-                          try { await FirebaseMessaging.instance.deleteToken(); } catch (_) {}
                           await Supabase.instance.client.auth.signOut();
                           ProfessorSession.clear();
 

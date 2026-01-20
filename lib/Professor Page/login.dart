@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -7,7 +8,6 @@ import 'package:professor/Professor%20Page/professor_session.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../main.dart';
-import 'Notifications/push_manager.dart';
 import 'mainshell.dart';
 
 class Login extends StatefulWidget {
@@ -18,26 +18,39 @@ class Login extends StatefulWidget {
 }
 
 class _LoginState extends State<Login> {
-  Future<void> _attachDeviceTokenToUser(String uid, {required bool enabled}) async {
-    // ✅ if disabled, ensure no tokens for this user and stop
-    if (!enabled) {
-      await supabase.from('device_tokens').delete().eq('user_id', uid);
-      return;
-    }
+  bool _locked = false;
+  int _lockSeconds = 0;
+  Timer? _lockTimer;
 
-    final token = await FirebaseMessaging.instance.getToken();
-    if (token == null || token.isEmpty) return;
+  void _startLock(int seconds) {
+    _lockTimer?.cancel();
+    setState(() {
+      _locked = true;
+      _lockSeconds = seconds;
+    });
 
-    // remove token from any previous user (multi-account)
-    await supabase.from('device_tokens').delete().eq('token', token);
-
-    await supabase.from('device_tokens').upsert({
-      'user_id': uid,
-      'token': token,
-      'platform': Platform.isAndroid ? 'android' : 'ios',
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
-    }, onConflict: 'user_id,token');
+    _lockTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) return;
+      if (_lockSeconds <= 1) {
+        t.cancel();
+        setState(() {
+          _locked = false;
+          _lockSeconds = 0;
+        });
+      } else {
+        setState(() => _lockSeconds -= 1);
+      }
+    });
   }
+
+  @override
+  void dispose() {
+    _lockTimer?.cancel();
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
 
   String? emailValidator(String? value) {
     final email = value?.trim() ?? '';
@@ -56,13 +69,6 @@ class _LoginState extends State<Login> {
 
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-
-  @override
-  void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    super.dispose();
-  }
 
   String? _loginError;
 
@@ -304,7 +310,7 @@ class _LoginState extends State<Login> {
                             borderRadius: BorderRadiusGeometry.circular(6)
                         )
                       ),
-                        onPressed: () async {
+                        onPressed: _locked ? null : () async {
                           if (!_formKey.currentState!.validate()) return;
 
                           setState(() {
@@ -373,13 +379,18 @@ class _LoginState extends State<Login> {
                               return;
                             }
 
-                            final pushEnabled = (profRow['push_enabled'] as bool?) ?? false;
-                            await _attachDeviceTokenToUser(uid, enabled: pushEnabled);
+                            // ✅ reset attempts on successful login
+                            try {
+                              await supabase.functions.invoke(
+                                'prof-login-reset',
+                                body: {'user_id': uid},
+                              );
+                            } catch (_) {
+                              // ignore (login should still proceed)
+                            }
+
                             ProfessorSession.clear();
                             await ProfessorSession.get(force: true);
-
-                            await PushManager.initListenersOnce();
-                            await PushManager.syncFromDb();
 
                             if (!mounted) return;
                             Navigator.pop(context);
@@ -394,6 +405,29 @@ class _LoginState extends State<Login> {
                               _loginError = 'Invalid email or password';
                             });
 
+                            try {
+                              final email = _emailController.text.trim().toLowerCase();
+
+                              final resp = await supabase.functions.invoke(
+                                'prof-login-guard',
+                                body: {'email': email},
+                              );
+
+                              final data = Map<String, dynamic>.from(resp.data ?? {});
+                              final locked = data['locked'] == true;
+                              final lockSeconds = (data['lock_seconds'] as num?)?.toInt() ?? 0;
+
+                              if (locked && lockSeconds > 0) {
+                                _startLock(lockSeconds);
+                                if (!mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Too many attempts. Locked for ${lockSeconds}s.')),
+                                );
+                              }
+                            } catch (_) {
+                              // ignore (anti-enumeration safe)
+                            }
+
                             // force redraw + show red text immediately
                             _formKey.currentState!.validate();
                           } catch (e) {
@@ -405,11 +439,9 @@ class _LoginState extends State<Login> {
                           }
                         },
                       child: Text(
-                        'Sign In',
-                        style: TextStyle(
-                          color: Colors.white,
-                        ),
-                      )
+                        _locked ? 'Locked ($_lockSeconds s)' : 'Sign In',
+                        style: const TextStyle(color: Colors.white),
+                      ),
                     ),
                   ) : Container(),
                 ],
