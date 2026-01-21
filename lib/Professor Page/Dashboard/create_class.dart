@@ -49,6 +49,68 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
     return result ?? false;
   }
 
+  int _to24hMinutes(int hour12, int minute, bool isAm) {
+    var h = hour12 % 12;
+    if (!isAm) h += 12;
+    return h * 60 + minute;
+  }
+
+  int _classDurationMinutes() {
+    final startMin = _to24hMinutes(_startHour, _startMinute, _startIsAm);
+    final endMin = _to24hMinutes(_endHour, _endMinute, _endIsAm);
+
+    var diff = endMin - startMin;
+
+    // ✅ overnight -> add 24h
+    if (diff <= 0) diff += 24 * 60;
+
+    return diff;
+  }
+
+  String _formatDurationPretty(int minutes) {
+    final h = minutes ~/ 60;
+    final m = minutes % 60;
+
+    if (m == 0) return '${h}hr';
+    return '${h}hr ${m}min';
+  }
+
+  Future<bool> _confirmOvernightDuration({
+    required bool isEdit,
+    required String prettyDuration,
+  }) async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        title: const Text('Confirm duration'),
+        content: Text(
+          'End time is earlier than start time, so this class will be treated as an overnight class.\n\n'
+              'Are you sure you want to ${isEdit ? "edit" : "create"} this class to a $prettyDuration class?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.black)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF004280),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Yes', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    return result ?? false;
+  }
+
+
   bool _saving = false;
   String? _saveError;
 
@@ -586,6 +648,23 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
 
                           final ok = await _confirmSave(isEdit: isEdit);
                           if (!ok) return;
+
+                          // ✅ compute minutes
+                          final startMin = _to24hMinutes(_startHour, _startMinute, _startIsAm);
+                          final endMin = _to24hMinutes(_endHour, _endMinute, _endIsAm);
+
+                          // ✅ if end earlier than start -> overnight confirmation
+                          if (endMin < startMin) {
+                            final durationMin = _classDurationMinutes();
+                            final pretty = _formatDurationPretty(durationMin);
+
+                            final okOvernight = await _confirmOvernightDuration(
+                              isEdit: isEdit,
+                              prettyDuration: pretty,
+                            );
+
+                            if (!okOvernight) return;
+                          }
 
                           setState(() {
                             _saving = true;

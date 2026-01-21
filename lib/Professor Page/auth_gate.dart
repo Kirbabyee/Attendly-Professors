@@ -104,23 +104,32 @@ class _AuthGateState extends State<AuthGate> with SingleTickerProviderStateMixin
         return;
       }
 
-      // ✅ logged in: check professors.terms_conditions
+      // ✅ logged in: check professor row
       int terms = 0;
+      bool twoFA = false;
+      String emailToUse = session.user.email?.trim().toLowerCase() ?? "";
 
       try {
         final row = await supabase
             .from('professors')
-            .select('terms_conditions')
+            .select('terms_conditions, two_fa_enabled, email')
             .eq('id', session.user.id)
             .maybeSingle();
 
-        final raw = row?['terms_conditions'];
-        terms = (raw is num) ? raw.toInt() : int.tryParse('$raw') ?? 0;
+        final rawTerms = row?['terms_conditions'];
+        terms = (rawTerms is num) ? rawTerms.toInt() : int.tryParse('$rawTerms') ?? 0;
+
+        twoFA = row?['two_fa_enabled'] == true;
+
+        final emailReal = (row?['email'] ?? '').toString().trim().toLowerCase();
+        if (emailReal.isNotEmpty) emailToUse = emailReal;
       } catch (_) {
-        terms = 0; // safe default: not accepted
+        // safe default: not accepted / block
+        terms = 0;
+        twoFA = false;
       }
 
-      // ✅ if not accepted → sign out then go Landing/Login
+      // ✅ terms not accepted → sign out
       if (terms != 1) {
         await supabase.auth.signOut();
         ProfessorSession.clear();
@@ -133,7 +142,50 @@ class _AuthGateState extends State<AuthGate> with SingleTickerProviderStateMixin
         return;
       }
 
-      // ✅ accepted → go mainshell
+      // ✅ 2FA enabled: must be verified in twofa_otps
+      if (twoFA) {
+        bool verified = false;
+
+        try {
+          if (emailToUse.isEmpty) {
+            verified = false;
+          } else {
+            final otpRow = await supabase
+                .from('twofa_otps')
+                .select('verified, expires_at')
+                .eq('email', emailToUse)
+                .maybeSingle();
+
+            final v = otpRow?['verified'];
+            verified = (v == true);
+
+            // optional extra safety: if expired, treat as not verified
+            final expRaw = otpRow?['expires_at'];
+            if (verified && expRaw != null) {
+              final exp = DateTime.tryParse(expRaw.toString());
+              if (exp != null && exp.isBefore(DateTime.now().toUtc())) {
+                verified = false;
+              }
+            }
+          }
+        } catch (_) {
+          verified = false;
+        }
+
+        if (!verified) {
+          await supabase.auth.signOut();
+          ProfessorSession.clear();
+
+          if (!mounted) return;
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const LandingPage()),
+                (route) => false,
+          );
+          return;
+        }
+      }
+
+      // ✅ accepted (+ verified if 2FA) → mainshell
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const Mainshell()),

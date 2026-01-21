@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:professor/Professor%20Page/Help/help.dart';
 
 import '../widgets/navbar.dart';
 import 'Settings/settings.dart';
@@ -24,6 +25,7 @@ class _MainshellState extends State<Mainshell> {
   final List<Widget> _pages = const [
     Dashboard(unRead: true),
     History(),
+    Help(),
     Settings()
   ];
 

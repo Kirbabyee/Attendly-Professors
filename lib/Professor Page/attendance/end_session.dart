@@ -47,53 +47,61 @@ class _EndSessionState extends State<EndSession> {
     final choice = await showDialog<String>(
       context: context,
       barrierDismissible: true,
-      builder: (_) => AlertDialog(
-        backgroundColor: Colors.white,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 70, vertical: 24), // ✅ mas maliit width
-        contentPadding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
-        actionsPadding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        titlePadding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-        title: Text(
-          studentName,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-        ),
-        content: const Text(
-          'Set student status:',
-          style: TextStyle(fontSize: 12),
-        ),
-        actions: [
-          SizedBox(
-            height: 32,
-            child: TextButton(
-              onPressed: () => Navigator.pop(context, null),
-              child: const Text('Cancel', style: TextStyle(fontSize: 12, color: Colors.black)),
+      builder: (_) =>
+          AlertDialog(
+            backgroundColor: Colors.white,
+            insetPadding: const EdgeInsets.symmetric(
+                horizontal: 70, vertical: 24),
+            // ✅ mas maliit width
+            contentPadding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+            actionsPadding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10)),
+            titlePadding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            title: Text(
+              studentName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
             ),
-          ),
-          SizedBox(
-            height: 32,
-            child: TextButton(
-              onPressed: () => Navigator.pop(context, 'excused'),
-              child: const Text('Excuse', style: TextStyle(fontSize: 12, color: Colors.orange)),
+            content: const Text(
+              'Set student status:',
+              style: TextStyle(fontSize: 12),
             ),
-          ),
-          SizedBox(
-            height: 32,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF018832),
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                elevation: 0,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            actions: [
+              SizedBox(
+                height: 32,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context, null),
+                  child: const Text('Cancel',
+                      style: TextStyle(fontSize: 12, color: Colors.black)),
+                ),
               ),
-              onPressed: () => Navigator.pop(context, 'present'),
-              child: const Text('Present', style: TextStyle(fontSize: 12, color: Colors.white)),
-            ),
+              SizedBox(
+                height: 32,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context, 'excused'),
+                  child: const Text('Excuse',
+                      style: TextStyle(fontSize: 12, color: Colors.orange)),
+                ),
+              ),
+              SizedBox(
+                height: 32,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF018832),
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: () => Navigator.pop(context, 'present'),
+                  child: const Text('Present',
+                      style: TextStyle(fontSize: 12, color: Colors.white)),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
     );
 
     if (choice == null) return;
@@ -101,41 +109,49 @@ class _EndSessionState extends State<EndSession> {
     final ok = await showDialog<bool>(
       context: context,
       barrierDismissible: true,
-      builder: (_) => AlertDialog(
-        backgroundColor: Colors.white,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 90, vertical: 24), // ✅ mas maliit pa
-        contentPadding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
-        actionsPadding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        titlePadding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-        title: const Text('Confirm', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-        content: Text(
-          choice == 'present' ? 'Mark as Present?' : 'Mark as Excused?',
-          style: const TextStyle(fontSize: 12),
-        ),
-        actions: [
-          SizedBox(
-            height: 32,
-            child: TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('No', style: TextStyle(fontSize: 12, color: Colors.black)),
+      builder: (_) =>
+          AlertDialog(
+            backgroundColor: Colors.white,
+            insetPadding: const EdgeInsets.symmetric(
+                horizontal: 90, vertical: 24),
+            // ✅ mas maliit pa
+            contentPadding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+            actionsPadding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10)),
+            titlePadding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            title: const Text('Confirm',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+            content: Text(
+              choice == 'present' ? 'Mark as Present?' : 'Mark as Excused?',
+              style: const TextStyle(fontSize: 12),
             ),
-          ),
-          SizedBox(
-            height: 32,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF004280),
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                elevation: 0,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            actions: [
+              SizedBox(
+                height: 32,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('No',
+                      style: TextStyle(fontSize: 12, color: Colors.black)),
+                ),
               ),
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Yes', style: TextStyle(fontSize: 12, color: Colors.white)),
-            ),
+              SizedBox(
+                height: 32,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF004280),
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Yes',
+                      style: TextStyle(fontSize: 12, color: Colors.white)),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
     );
 
     if (ok != true) return;
@@ -163,22 +179,25 @@ class _EndSessionState extends State<EndSession> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        backgroundColor: Colors.white,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 110, vertical: 24),
-        contentPadding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(CupertinoIcons.check_mark_circled_solid,
-                color: Color(0xFF018832), size: 40),
-            const SizedBox(height: 10),
-            Text(message, textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 13)),
-          ],
-        ),
-      ),
+      builder: (_) =>
+          AlertDialog(
+            backgroundColor: Colors.white,
+            insetPadding: const EdgeInsets.symmetric(
+                horizontal: 110, vertical: 24),
+            contentPadding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(CupertinoIcons.check_mark_circled_solid,
+                    color: Color(0xFF018832), size: 40),
+                const SizedBox(height: 10),
+                Text(message, textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 13)),
+              ],
+            ),
+          ),
     );
 
     await Future.delayed(const Duration(seconds: 1));
@@ -253,7 +272,8 @@ class _EndSessionState extends State<EndSession> {
     if (_enrolled.isEmpty) {
       final enrolledRows = await supabase
           .from('class_enrollments')
-          .select('student_id, students(first_name,last_name,student_number,avatar_url)')
+          .select(
+          'student_id, students(first_name,last_name,student_number,avatar_url)')
           .eq('class_id', widget.classId)
           .order('joined_at', ascending: true);
 
@@ -274,12 +294,16 @@ class _EndSessionState extends State<EndSession> {
     }
 
     // 2) compute missing -> absent
-    final enrolledIds = _enrolled.map((e) => e['student_id'] as String).toList();
-    final missingIds = enrolledIds.where((sid) => !existingByStudent.containsKey(sid)).toList();
+    final enrolledIds = _enrolled
+        .map((e) => e['student_id'] as String)
+        .toList();
+    final missingIds = enrolledIds.where((sid) =>
+    !existingByStudent.containsKey(sid)).toList();
 
     // 3) upsert absents into attendance (so EVERYONE has a row)
     if (missingIds.isNotEmpty) {
-      final absentPayload = missingIds.map((sid) => {
+      final absentPayload = missingIds.map((sid) =>
+      {
         'session_id': _sessionId,
         'student_id': sid,
         'status': 'absent',
@@ -346,7 +370,8 @@ class _EndSessionState extends State<EndSession> {
   bool _loadingAttendance = true;
   String? _attendanceErr;
 
-  List<Map<String, dynamic>> _enrolled = [];   // from class_enrollments + students
+  List<Map<String, dynamic>> _enrolled = [
+  ]; // from class_enrollments + students
   List<Map<String, dynamic>> _attendance = []; // from attendance + students
 
   Future<void> _loadData() async {
@@ -363,7 +388,7 @@ class _EndSessionState extends State<EndSession> {
           .from('class_sessions')
           .select('id, started_at, status')
           .eq('class_id', widget.classId)
-          .eq('status', 'started')
+          .inFilter('status', ['started'])
           .order('started_at', ascending: false)
           .maybeSingle();
 
@@ -378,7 +403,8 @@ class _EndSessionState extends State<EndSession> {
       // 2) enrolled students (for total + pending)
       final enrolledRows = await supabase
           .from('class_enrollments')
-          .select('student_id, students(first_name,last_name,student_number,avatar_url)')
+          .select(
+          'student_id, students(first_name,last_name,student_number,avatar_url)')
           .eq('class_id', widget.classId)
           .order('joined_at', ascending: true);
 
@@ -387,7 +413,8 @@ class _EndSessionState extends State<EndSession> {
       // 3) attendance for this session
       final attendRows = await supabase
           .from('attendance')
-          .select('student_id, status, time_in, students(first_name,last_name,student_number,avatar_url)')
+          .select(
+          'student_id, status, time_in, students(first_name,last_name,student_number,avatar_url)')
           .eq('session_id', _sessionId!)
           .order('time_in', ascending: true);
 
@@ -398,7 +425,6 @@ class _EndSessionState extends State<EndSession> {
         _loadingAttendance = false;
         _loadingSessionInfo = false; // ✅ ADD THIS
       });
-
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -493,28 +519,28 @@ class _EndSessionState extends State<EndSession> {
           actions: [
             OutlinedButton(
               style: OutlinedButton.styleFrom(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadiusGeometry.circular(8)
-                )
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadiusGeometry.circular(8)
+                  )
               ),
               onPressed: () => Navigator.pop(context, false),
               child: const Text(
                 'Cancel',
                 style: TextStyle(
-                  color: Colors.black
+                    color: Colors.black
                 ),
               ),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFB60202),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadiusGeometry.circular(8)
-                )
+                  backgroundColor: const Color(0xFFB60202),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadiusGeometry.circular(8)
+                  )
               ),
               onPressed: () => Navigator.pop(context, true),
               child: const Text(
-               'End Session',
+                'End Session',
                 style: TextStyle(
                   color: Colors.white,
                 ),
@@ -569,7 +595,8 @@ class _EndSessionState extends State<EndSession> {
     final isPresent = st == 'present' || st == 'late';
     final isLate = st == 'late';
 
-    final isPending = !isPresent && st != 'excused'; // pending if no record OR not present/late/excused
+    final isPending = !isPresent &&
+        st != 'excused'; // pending if no record OR not present/late/excused
 
     return InkWell(
       onTap: isPending
@@ -588,19 +615,24 @@ class _EndSessionState extends State<EndSession> {
                     children: [
                       ClipRRect(
                         borderRadius: BorderRadius.circular(999),
-                        child: (avatarUrl != null && avatarUrl.trim().isNotEmpty)
+                        child: (avatarUrl != null && avatarUrl
+                            .trim()
+                            .isNotEmpty)
                             ? Image.network(
                           avatarUrl,
                           width: 20,
                           height: 20,
                           fit: BoxFit.cover,
                           errorBuilder: (_, __, ___) =>
-                              Image.asset('assets/avatar.png', width: 20, height: 20),
+                              Image.asset(
+                                  'assets/avatar.png', width: 20, height: 20),
                         )
-                            : Image.asset('assets/avatar.png', width: 20, height: 20),
+                            : Image.asset(
+                            'assets/avatar.png', width: 20, height: 20),
                       ),
                       const SizedBox(width: 10),
-                      Text(name.isEmpty ? 'Unknown Student' : name, style: const TextStyle(fontSize: 12)),
+                      Text(name.isEmpty ? 'Unknown Student' : name,
+                          style: const TextStyle(fontSize: 12)),
                     ],
                   ),
 
@@ -609,19 +641,25 @@ class _EndSessionState extends State<EndSession> {
                       Icon(
                         isPresent
                             ? CupertinoIcons.check_mark_circled
-                            : (st == 'excused' ? CupertinoIcons.info_circle : CupertinoIcons.clock),
+                            : (st == 'excused'
+                            ? CupertinoIcons.info_circle
+                            : CupertinoIcons.clock),
                         color: isPresent
                             ? (isLate ? Colors.orange : const Color(0xFF018832))
-                            : (st == 'excused' ? Colors.blue : const Color(0xFFF7CB73)),
+                            : (st == 'excused' ? Colors.blue : const Color(
+                            0xFFF7CB73)),
                         size: 15,
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        isPresent ? (isLate ? 'Late' : 'Present') : (st == 'excused' ? 'Excused' : 'Pending'),
+                        isPresent ? (isLate ? 'Late' : 'Present') : (st ==
+                            'excused' ? 'Excused' : 'Pending'),
                         style: TextStyle(
                           color: isPresent
-                              ? (isLate ? Colors.orange : const Color(0xFF018832))
-                              : (st == 'excused' ? Colors.blue : const Color(0xFFF7CB73)),
+                              ? (isLate ? Colors.orange : const Color(
+                              0xFF018832))
+                              : (st == 'excused' ? Colors.blue : const Color(
+                              0xFFF7CB73)),
                           fontSize: 12,
                         ),
                       ),
@@ -646,313 +684,318 @@ class _EndSessionState extends State<EndSession> {
 
   @override
   Widget build(BuildContext context) {
-    final screenHeight = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery
+        .of(context)
+        .size
+        .width;
+
     return Scaffold(
       body: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
+        child: RefreshIndicator(
+          onRefresh: () async {
+            await _loadData(); // ✅ refresh students + attendance
+          },
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            // ✅ pull even if short
             children: [
-              // Header
               Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  AttendlyBlueHeader(
-                    onBack: false,
-                    courseTitle: widget.courseTitle,
-                    courseCode: widget.courseCode,
-                    professor: widget.professor,
-                    icon: CupertinoIcons.book,
-                    iconColor: const Color(0xFFFBD600),
-                  ),
+                  // Header
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      AttendlyBlueHeader(
+                        onBack: false,
+                        courseTitle: widget.courseTitle,
+                        courseCode: widget.courseCode,
+                        professor: widget.professor,
+                        icon: CupertinoIcons.book,
+                        iconColor: const Color(0xFFFBD600),
+                      ),
 
-                  const SizedBox(height: 20),
+                      const SizedBox(height: 20),
 
-                  ClassInfo(
-                    classCode: widget.classCode,
-                    room: widget.room,
-                    sched: widget.sched,
-                  ),
-                  const SizedBox(height: 10),
+                      ClassInfo(
+                        classCode: widget.classCode,
+                        room: widget.room,
+                        sched: widget.sched,
+                      ),
+                      const SizedBox(height: 10),
 
-                  // Back Button
-                  Container(
-                    margin: EdgeInsets.symmetric(horizontal: 30),
-                    child: Row(
-                      children: [
-                        IconButton(
-                            onPressed: () {
-                              Navigator.pop(context);
-                            },
-                            icon: Icon(CupertinoIcons.arrow_left)),
-                        Text('Back')
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-
-                  // End Session
-                  Container(
-                    padding: EdgeInsets.all(20),
-                    width: 350,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadiusGeometry.circular(8),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Colors.black26,
-                          blurRadius: 2,
-                          offset: Offset(0, 4),
+                      // Back Button
+                      Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 30),
+                        child: Row(
+                          children: [
+                            IconButton(
+                              onPressed: () {
+                                Navigator.pop(context);
+                              },
+                              icon: const Icon(CupertinoIcons.arrow_left),
+                            ),
+                            const Text('Back')
+                          ],
                         ),
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'End Class Session',
-                          style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold
-                          ),
+                      ),
+                      const SizedBox(height: 10),
+
+                      // End Session
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        width: 350,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadiusGeometry.circular(8),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Colors.black26,
+                              blurRadius: 2,
+                              offset: Offset(0, 4),
+                            ),
+                          ],
                         ),
-                        SizedBox(height: 10,),
-                        Container(
-                          padding: EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Color(0x509BC9F5),
-                            borderRadius: BorderRadiusGeometry.circular(8)
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                CupertinoIcons.clock,
-                                size: 20,
-                                color: Color(0xFF043B6F)
-                              ),
-                              SizedBox(width: 5,),
-                              Text(
-                                _loadingSessionInfo
-                                    ? 'Loading session time...'
-                                    : _startedAt == null
-                                    ? 'Session Started'
-                                    : 'Session Started at ${DateFormat('h:mm a').format(_startedAt!)}',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Color(0xFF043B6F),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        SizedBox(height: 10,),
-                        Center(
-                          child: OutlinedButton(
-                            style: OutlinedButton.styleFrom(
-                              backgroundColor: const Color(0xFFB60202),
-                              side: BorderSide.none,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'End Class Session',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
-                            onPressed: _ending ? null : _confirmEndSession,
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            const SizedBox(height: 10),
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: const Color(0x509BC9F5),
+                                borderRadius: BorderRadiusGeometry.circular(8),
+                              ),
                               child: Row(
-                                mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  if (_ending) ...[
-                                    const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                  ],
+                                  const Icon(
+                                    CupertinoIcons.clock,
+                                    size: 20,
+                                    color: Color(0xFF043B6F),
+                                  ),
+                                  const SizedBox(width: 5),
                                   Text(
-                                    _ending ? 'Ending...' : 'End Class Session',
-                                    style: const TextStyle(color: Colors.white),
+                                    _loadingSessionInfo
+                                        ? 'Loading session time...'
+                                        : _startedAt == null
+                                        ? 'Session Started'
+                                        : 'Session Started at ${DateFormat(
+                                        'h:mm a').format(_startedAt!)}',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Color(0xFF043B6F),
+                                    ),
                                   ),
                                 ],
                               ),
                             ),
-                          ),
+                            const SizedBox(height: 10),
+                            Center(
+                              child: OutlinedButton(
+                                style: OutlinedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFB60202),
+                                  side: BorderSide.none,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                onPressed: _ending ? null : _confirmEndSession,
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 10,
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (_ending) ...[
+                                        const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                      ],
+                                      Text(
+                                        _ending
+                                            ? 'Ending...'
+                                            : 'End Class Session',
+                                        style: const TextStyle(
+                                            color: Colors.white),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
+                      ),
 
-                      ],
-                    ),
-                  ),
+                      const SizedBox(height: 10),
 
-                  SizedBox(height: 10,),
-
-                  // Attendance
-                  Container(
-                    width: 350,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        Container(
-                          width: 90,
-                          height: 90,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadiusGeometry.circular(8),
-                            color: Colors.white,
-                            boxShadow: const [
-                              BoxShadow(
-                                color: Colors.black26,
-                                blurRadius: 2,
-                                offset: Offset(0, 4),
+                      // Attendance
+                      SizedBox(
+                        width: 350,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            Container(
+                              width: 90,
+                              height: 90,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadiusGeometry.circular(8),
+                                color: Colors.white,
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Colors.black26,
+                                    blurRadius: 2,
+                                    offset: Offset(0, 4),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                '$presentCount',
-                                style: TextStyle(
-                                  fontSize: 30
-                                ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    '$presentCount',
+                                    style: const TextStyle(fontSize: 30),
+                                  ),
+                                  const Text(
+                                    'Present',
+                                    style: TextStyle(fontSize: 12),
+                                  ),
+                                ],
                               ),
-                              Text(
-                                'Present',
-                                style: TextStyle(
-                                  fontSize: 12
-                                ),
-                              )
-                            ],
-                          ),
+                            ),
+                            Container(
+                              width: 90,
+                              height: 90,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadiusGeometry.circular(8),
+                                color: Colors.white,
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Colors.black26,
+                                    blurRadius: 2,
+                                    offset: Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    '$pendingCount',
+                                    style: const TextStyle(fontSize: 28),
+                                  ),
+                                  const Text(
+                                    'Pending',
+                                    style: TextStyle(fontSize: 12),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              width: 90,
+                              height: 90,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadiusGeometry.circular(8),
+                                color: Colors.white,
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Colors.black26,
+                                    blurRadius: 2,
+                                    offset: Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    '$totalStudents',
+                                    style: const TextStyle(fontSize: 30),
+                                  ),
+                                  const Text(
+                                    'Total',
+                                    style: TextStyle(fontSize: 12),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
-                        Container(
-                          width: 90,
-                          height: 90,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadiusGeometry.circular(8),
-                            color: Colors.white,
-                            boxShadow: const [
-                              BoxShadow(
-                                color: Colors.black26,
-                                blurRadius: 2,
-                                offset: Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                '$pendingCount',
-                                style: TextStyle(
-                                    fontSize: 28
-                                ),
-                              ),
-                              Text(
-                                'Pending',
-                                style: TextStyle(
-                                    fontSize: 12
-                                ),
-                              )
-                            ],
-                          ),
-                        ),
-                        Container(
-                          width: 90,
-                          height: 90,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadiusGeometry.circular(8),
-                            color: Colors.white,
-                            boxShadow: const [
-                              BoxShadow(
-                                color: Colors.black26,
-                                blurRadius: 2,
-                                offset: Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                '$totalStudents',
-                                style: TextStyle(
-                                    fontSize: 30
-                                ),
-                              ),
-                              Text(
-                                'Total',
-                                style: TextStyle(
-                                    fontSize: 12
-                                ),
-                              )
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                      ),
 
-                  SizedBox(height: 20,),
+                      const SizedBox(height: 20),
 
-                  // Attendance Log
-                  Container(
-                    width: 350,
-                    padding: EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadiusGeometry.circular(8)
-                    ),
-                    child: Column(
-                      children: [
-                        Container(
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text('Attendance Log'),
-                              Container(
-                                child: Row(
+                      // Attendance Log
+                      Container(
+                        width: 350,
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadiusGeometry.circular(8),
+                        ),
+                        child: Column(
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text('Attendance Log'),
+                                Row(
                                   children: [
-                                    Icon(Icons.people_alt_outlined),
-                                    Text('${presentCount}/$totalStudents'),
+                                    const Icon(Icons.people_alt_outlined),
+                                    Text('$presentCount/$totalStudents'),
                                   ],
                                 ),
-                              )
-                            ],
-                          ),
-                        ),
-                        Divider(
-                          color: Colors.black,
-                        ),
-                        SizedBox(
-                          height: 110,
-                          child: Scrollbar(
-                            controller: _scrollController,
-                            thumbVisibility: true, // always show scrollbar
-                            radius: const Radius.circular(8),
-                            thickness: 4,
-                            child:
-                            _loadingAttendance
-                            ? const Center(child: CircularProgressIndicator())
-                            : ListView.builder(
-                              controller: _scrollController,
-                              itemCount: _enrolled.length,
-                              itemBuilder: (context, index) {
-                                return studentRowFromEnrollment(_enrolled[index]);
-                              },
+                              ],
                             ),
-                          ),
+                            const Divider(color: Colors.black),
+                            SizedBox(
+                              height: 110,
+                              child: Scrollbar(
+                                controller: _scrollController,
+                                thumbVisibility: true,
+                                radius: const Radius.circular(8),
+                                thickness: 4,
+                                child: _loadingAttendance
+                                    ? const Center(
+                                    child: CircularProgressIndicator())
+                                    : ListView.builder(
+                                  controller: _scrollController,
+                                  physics: const ClampingScrollPhysics(),
+                                  // ✅ important
+                                  itemCount: _enrolled.length,
+                                  itemBuilder: (context, index) {
+                                    return studentRowFromEnrollment(
+                                        _enrolled[index]);
+                                  },
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                  )
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
                 ],
               ),
-              const SizedBox(height: 10),
             ],
           ),
         ),

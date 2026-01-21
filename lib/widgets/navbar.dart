@@ -22,6 +22,7 @@ class AttendlyNavBar extends StatelessWidget {
     final items = const [
       _NavItem(icon: CupertinoIcons.home, label: 'Home'),
       _NavItem(icon: CupertinoIcons.clock, label: 'History'),
+      _NavItem(icon: CupertinoIcons.question_circle, label: 'Help'),
       _NavItem(icon: CupertinoIcons.gear, label: 'Settings'),
     ];
 

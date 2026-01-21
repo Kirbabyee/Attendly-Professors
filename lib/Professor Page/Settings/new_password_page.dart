@@ -75,7 +75,7 @@ class _NewPasswordPageState extends State<NewPasswordPage> {
       );
 
       if (!mounted) return;
-      Navigator.push(context, MaterialPageRoute(builder: (_) => Mainshell(initialIndex: 2))); // back
+      Navigator.push(context, MaterialPageRoute(builder: (_) => Mainshell(initialIndex: 3))); // back
     } catch (e) {
       setState(() => error = "Error: $e");
     } finally {

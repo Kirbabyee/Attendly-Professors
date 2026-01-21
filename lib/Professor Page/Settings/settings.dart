@@ -2,6 +2,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../main.dart';
 import '../professor_session.dart';
 import 'change_email.dart';
 import 'privacy_policy.dart';
@@ -21,6 +22,9 @@ class _SettingsState extends State<Settings> {
   }
   bool _notifBusy = false;
 
+  bool is2FAOn = false;
+  bool _twoFaBusy = false;
+
   Map<String, dynamic>? _professor;
   bool _loadingProfessor = true;
   String? _professorError;
@@ -37,7 +41,13 @@ class _SettingsState extends State<Settings> {
 
       setState(() {
         _professor = s;
+
+        // ✅ Push switch sync
         isNotificationOn = (s?['push_enabled'] as bool?) ?? false;
+
+        // ✅ 2FA switch sync
+        is2FAOn = (s?['two_fa_enabled'] as bool?) ?? false;
+
         _loadingProfessor = false;
       });
 
@@ -385,6 +395,101 @@ class _SettingsState extends State<Settings> {
                               ),
                             ),
                           ),
+                          SizedBox(height: 15,),
+                          Container(
+                            padding: EdgeInsets.symmetric(horizontal: screenWidth * .05, vertical: screenHeight * .005),
+                            decoration: BoxDecoration(
+                              color: Color(0x90D9D9D9),
+                              borderRadius: BorderRadiusGeometry.circular(8),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Two Factor Authentication',
+                                      style: TextStyle(fontSize: screenHeight * .014, fontWeight: FontWeight.w600),
+                                    ),
+                                    Text('Receive OTP for verification', style: TextStyle(fontSize: screenHeight * .014)),
+                                  ],
+                                ),
+                                Transform.scale(
+                                  scale: screenHeight * .001,
+                                  child: Switch(
+                                    activeTrackColor: const Color(0xFF004280),
+                                    value: is2FAOn,
+                                    onChanged: _twoFaBusy ? null : (value) async {
+                                      final ok = await showDialog<bool>(
+                                        context: context,
+                                        barrierDismissible: true,
+                                        builder: (_) => AlertDialog(
+                                          backgroundColor: Colors.white,
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                          title: Text(
+                                            value ? 'Enable 2FA?' : 'Disable 2FA?',
+                                            style: const TextStyle(fontWeight: FontWeight.w600),
+                                          ),
+                                          content: Text(
+                                            value
+                                                ? 'You will receive OTP during sensitive actions (e.g., password reset).'
+                                                : 'OTP verification will be turned off.',
+                                          ),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () => Navigator.pop(context, false),
+                                              child: const Text('Cancel'),
+                                            ),
+                                            ElevatedButton(
+                                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF004280)),
+                                              onPressed: () => Navigator.pop(context, true),
+                                              child: const Text('Confirm', style: TextStyle(color: Colors.white)),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                      if (ok != true) return;
+
+                                      final prev = is2FAOn;
+                                      setState(() {
+                                        _twoFaBusy = true;
+                                        is2FAOn = value;
+                                      });
+
+                                      final uid = _professor?['id']?.toString();
+                                      if (uid == null) {
+                                        setState(() {
+                                          _twoFaBusy = false;
+                                          is2FAOn = prev;
+                                        });
+                                        return;
+                                      }
+
+                                      try {
+                                        // ✅ write to DB
+                                        await supabase
+                                            .from('professors')
+                                            .update({'two_fa_enabled': value})
+                                            .eq('id', uid);
+
+                                        // ✅ refresh cache/UI from DB
+                                        await _loadProfessor(force: true);
+                                      } catch (e) {
+                                        if (!mounted) return;
+                                        setState(() => is2FAOn = prev);
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('Failed to update 2FA: $e')),
+                                        );
+                                      } finally {
+                                        if (mounted) setState(() => _twoFaBusy = false);
+                                      }
+                                    },
+                                  ),
+                                )
+                              ],
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -664,19 +769,39 @@ class _SettingsState extends State<Settings> {
                         );
 
                         try {
-                          // ✅ ito na yung tunay na “delay”
-                          await Supabase.instance.client.auth.signOut();
+                          final supabase = Supabase.instance.client;
+
+                          // 1) get email to use
+                          final userEmail =
+                          (_professor?['email']?.toString().trim().toLowerCase().isNotEmpty == true)
+                              ? _professor!['email'].toString().trim().toLowerCase()
+                              : (supabase.auth.currentUser?.email?.trim().toLowerCase() ?? '');
+
+                          // 2) reset twofa_otps verified=false
+                          if (userEmail.isNotEmpty) {
+                            try {
+                              await supabase.from('twofa_otps').upsert({
+                                'email': userEmail,
+                                'verified': false,
+                                'otp_hash': null,
+                                'expires_at': null,
+                                'updated_at': DateTime.now().toUtc().toIso8601String(),
+                              }, onConflict: 'email');
+                            } catch (e) {
+                              print(e);
+                            }
+                          }
+
+                          // 3) sign out
+                          await supabase.auth.signOut();
                           ProfessorSession.clear();
 
                           if (!mounted) return;
                           Navigator.pop(context); // close loading dialog
-
-                          // ✅ clear stack, go to login
                           Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
                         } catch (e) {
                           if (!mounted) return;
                           Navigator.pop(context); // close loading dialog
-
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(content: Text('Logout failed: $e')),
                           );
