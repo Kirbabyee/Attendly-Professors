@@ -691,7 +691,7 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
                             Map<String, dynamic> row;
 
                             if (isEdit) {
-                              // ✅ UPDATE
+                              // ✅ UPDATE class
                               row = await supabase
                                   .from('classes')
                                   .update({
@@ -704,11 +704,19 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
                                 'end_time': end,
                                 'schedule': schedule,
                               })
-                                  .eq('id', widget.initialItem!.id) // requires ClassItem.id
+                                  .eq('id', widget.initialItem!.id)
                                   .select()
                                   .single();
+
+                              // ✅ RESET all sessions under this class
+                              await supabase
+                                  .from('class_sessions')
+                                  .update({
+                                'status': null,
+                              })
+                                  .eq('class_id', widget.initialItem!.id);
                             } else {
-                              // ✅ INSERT
+                              // ✅ INSERT class
                               row = await supabase
                                   .from('classes')
                                   .insert({

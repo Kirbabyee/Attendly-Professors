@@ -67,45 +67,61 @@ class _DataFilterState extends State<DataFilter> {
       final profId = supabase.auth.currentUser?.id;
       if (profId == null) throw 'No logged in professor.';
 
-      // Get ended sessions (or all sessions if you want)
+      // ✅ Pull from history, join to session + class
       final rows = await supabase
-          .from('class_sessions')
+          .from('attendance_history')
           .select('''
-          id,
-          started_at,
-          class_id,
-          classes:classes!inner(
+          session_id,
+          changed_at,
+          class_sessions:class_sessions!inner(
             id,
-            course,
-            course_code,
-            professor_id
+            started_at,
+            class_id,
+            classes:classes!inner(
+              id,
+              course,
+              course_code,
+              professor_id
+            )
           )
         ''')
-          .eq('classes.professor_id', profId)
-          .order('started_at', ascending: false);
+          .eq('class_sessions.classes.professor_id', profId)
+          .order('changed_at', ascending: false);
 
       final raw = (rows as List).cast<Map<String, dynamic>>();
 
+      // ✅ Dedup by session_id (latest changed_at per session)
+      final seen = <String>{};
       final list = <AttendanceRecord>[];
 
       for (final r in raw) {
-        final cls = r['classes'] as Map<String, dynamic>?; // can be null
+        final sessionId = (r['session_id'] ?? '').toString();
+        if (sessionId.isEmpty) continue;
+        if (seen.contains(sessionId)) continue; // keep latest only
+        seen.add(sessionId);
 
-        // if join failed or no permission, skip row
+        final cs = r['class_sessions'] as Map<String, dynamic>?;
+        if (cs == null) continue;
+
+        final cls = cs['classes'] as Map<String, dynamic>?;
         if (cls == null) continue;
-
-        final sessionId = (r['id'] ?? '').toString();
-        final startedAtStr = (r['started_at'] ?? '').toString();
-
-        // skip if missing essentials
-        if (sessionId.isEmpty || startedAtStr.isEmpty) continue;
 
         final classId = (cls['id'] ?? '').toString();
         final courseName = (cls['course'] ?? '').toString();
         final courseCode = (cls['course_code'] ?? '').toString();
 
-        // skip if classId missing
-        if (classId.isEmpty) continue;
+        // ✅ date source: started_at if available, else changed_at (history timestamp)
+        final startedAt = cs['started_at'];
+        final changedAt = r['changed_at'];
+
+        DateTime date;
+        if (startedAt != null && startedAt.toString().isNotEmpty) {
+          date = DateTime.parse(startedAt.toString());
+        } else if (changedAt != null && changedAt.toString().isNotEmpty) {
+          date = DateTime.parse(changedAt.toString());
+        } else {
+          continue;
+        }
 
         list.add(
           AttendanceRecord(
@@ -113,7 +129,7 @@ class _DataFilterState extends State<DataFilter> {
             classId: classId,
             courseName: courseName,
             courseCode: courseCode.isEmpty ? '-' : courseCode,
-            date: DateTime.parse(startedAtStr),
+            date: date,
           ),
         );
       }
@@ -123,14 +139,13 @@ class _DataFilterState extends State<DataFilter> {
 
       classOptions = [
         'All',
-        ...{ for (final r in allRecords) r.courseCode }
+        ...{ for (final r in allRecords) r.courseName }
             .where((x) => x.trim().isNotEmpty && x != '-')
       ];
 
       if (!mounted) return;
       setState(() => _loading = false);
-
-      applyFilters(); // refresh filter view
+      applyFilters();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -139,7 +154,6 @@ class _DataFilterState extends State<DataFilter> {
       });
     }
   }
-
 
   void applyFilters() {
     final query = searchController.text.trim().toLowerCase();
@@ -233,7 +247,14 @@ class _DataFilterState extends State<DataFilter> {
             height: 360,
             child: SfDateRangePicker(
               selectionMode: DateRangePickerSelectionMode.range,
+              // Range color
+              startRangeSelectionColor: Color(0xFF004280),
+              endRangeSelectionColor: Color(0xFF004280),
+              rangeSelectionColor: Color(0xFF004280),
+              // Ranged date color
+              rangeTextStyle: TextStyle(color: Colors.white),
               toggleDaySelection: true,
+              todayHighlightColor: Color(0xFF004280),
               backgroundColor: Colors.white,
               headerStyle: DateRangePickerHeaderStyle(
                 backgroundColor: Colors.white
@@ -257,7 +278,7 @@ class _DataFilterState extends State<DataFilter> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
+              child: const Text('Cancel',style: TextStyle(color: Colors.black),),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
@@ -290,6 +311,7 @@ class _DataFilterState extends State<DataFilter> {
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
+    final screenWidth = MediaQuery.of(context).size.width;
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -338,11 +360,10 @@ class _DataFilterState extends State<DataFilter> {
                       Align(
                         alignment: Alignment.centerRight,
                         child: SizedBox(
-                          width: MediaQuery.of(context).size.width * 0.35,
+                          width: MediaQuery.of(context).size.width * 0.4,
                           child: OutlinedButton(
                             style: OutlinedButton.styleFrom(
-                              backgroundColor: const Color(0xFFEAEAEA),
-                              side: BorderSide.none,
+                              side: BorderSide(color: Colors.grey),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8),
                               ),
@@ -351,7 +372,7 @@ class _DataFilterState extends State<DataFilter> {
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Expanded(
+                                Container(
                                   child: Text(
                                     selectedRange == null ? 'Select date' : _fmtRange(selectedRange!),
                                     overflow: TextOverflow.ellipsis,
@@ -366,30 +387,43 @@ class _DataFilterState extends State<DataFilter> {
                                     },
                                     child: const Icon(Icons.close, size: 16),
                                   ),
+                                SizedBox(width: 5,),
+                                Icon(CupertinoIcons.calendar, color: Colors.black,)
                               ],
                             ),
                           ),
                         ),
                       ),
 
-                      SizedBox(width: screenHeight * .09),
+                      SizedBox(width: screenWidth * .14),
 
                       // Dropdown
                       Align(
                         alignment: Alignment.centerRight,
-                        child: SizedBox(
-                          width: MediaQuery.of(context).size.width * 0.3,
+                        child: Container(
+                          width: screenWidth * 0.35,
+                          padding: const EdgeInsets.symmetric(horizontal: 15),
+                          height: 42,
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                           child: DropdownButton<String>(
-                            isExpanded: true, // important so it uses the SizedBox width
-                            dropdownColor: Colors.white,
-                            style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                            isExpanded: true,
+                            dropdownColor: Colors.white, // dropdown list bg
+                            underline: const SizedBox(), // ❌ remove default underline
+                            iconEnabledColor: Colors.black, // arrow color
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.black, // text color
+                            ),
                             value: selectedClass,
                             items: classOptions.map((c) {
                               return DropdownMenuItem(
                                 value: c,
                                 child: Text(
                                   c,
-                                  overflow: TextOverflow.ellipsis, // prevent long text overflow
+                                  overflow: TextOverflow.ellipsis,
                                   maxLines: 1,
                                 ),
                               );
@@ -446,7 +480,7 @@ class _DataFilterState extends State<DataFilter> {
                       itemCount: filteredRecords.length,
                       itemBuilder: (context, index) {
                         final record = filteredRecords[index];
-                        final bg = index.isEven ? Colors.white : Colors.grey[300];
+                        final bg = index.isEven ? Colors.white : Colors.grey[200];
 
                         return Container(
                           height: 100,

@@ -105,6 +105,55 @@ class _FloatingToastState extends State<_FloatingToast>
 }
 
 class _DashboardState extends State<Dashboard> {
+  bool _canStartFromSched10mins(String sched) {
+    final now = DateTime.now();
+    final dayStr = sched.split(':').first.trim().toLowerCase();
+
+    const map = {
+      'sunday': DateTime.sunday,
+      'monday': DateTime.monday,
+      'tuesday': DateTime.tuesday,
+      'wednesday': DateTime.wednesday,
+      'thursday': DateTime.thursday,
+      'friday': DateTime.friday,
+      'saturday': DateTime.saturday,
+    };
+
+    final schedWeekday = map[dayStr];
+    if (schedWeekday == null) return false;
+
+    final startMin = _startMinutesFromSched(sched);
+    final endMinRaw = _endMinutesFromSched(sched);
+    if (startMin == 9999 || endMinRaw == 9999) return false;
+
+    final nowMin = now.hour * 60 + now.minute;
+
+    final overnight = endMinRaw <= startMin;
+    final endMin = overnight ? endMinRaw + 1440 : endMinRaw;
+
+    // ✅ startable window = 10 mins before start
+    final startableFrom = startMin - 10;
+
+    int prevDay(int d) => d == DateTime.monday ? DateTime.sunday : d - 1;
+    int nextDay(int d) => d == DateTime.sunday ? DateTime.monday : d + 1;
+
+    int? nowAdj;
+
+    if (now.weekday == schedWeekday) {
+      nowAdj = nowMin;
+    } else if (startableFrom < 0 && now.weekday == prevDay(schedWeekday)) {
+      nowAdj = nowMin - 1440; // spill to prev day (midnight start)
+    } else if (overnight && now.weekday == nextDay(schedWeekday)) {
+      nowAdj = nowMin + 1440; // continuation day
+    } else {
+      return false;
+    }
+
+    // ✅ show arrow only within [start-10 .. before end]
+    if (nowAdj >= endMin) return false;
+    return nowAdj >= startableFrom;
+  }
+
   Future<void> _showShareClassCodeModal(String classCode) async {
     await showDialog(
       context: context,
@@ -332,23 +381,6 @@ class _DashboardState extends State<Dashboard> {
     });
   }
 
-  int _dayRankFromSched(String sched) {
-    // Expect: "Monday: 9:00 AM - 11:00 AM"
-    final day = sched.split(':').first.trim().toLowerCase();
-
-    const dayRank = {
-      'sunday': 0,
-      'monday': 1,
-      'tuesday': 2,
-      'wednesday': 3,
-      'thursday': 4,
-      'friday': 5,
-      'saturday': 6,
-    };
-
-    return dayRank[day] ?? 99;
-  }
-
   int _daysUntilFromSched(String sched) {
     final dayStr = sched.split(':').first.trim().toLowerCase();
 
@@ -471,31 +503,6 @@ class _DashboardState extends State<Dashboard> {
 
   }
 
-  DateTime? _scheduleStartToday(String sched) {
-    final now = DateTime.now();
-    final dayStr = sched.split(':').first.trim().toLowerCase();
-
-    const map = {
-      'sunday': DateTime.sunday,
-      'monday': DateTime.monday,
-      'tuesday': DateTime.tuesday,
-      'wednesday': DateTime.wednesday,
-      'thursday': DateTime.thursday,
-      'friday': DateTime.friday,
-      'saturday': DateTime.saturday,
-    };
-
-    final schedWeekday = map[dayStr];
-    if (schedWeekday == null) return null;
-    if (now.weekday != schedWeekday) return null; // today only
-
-    final startMin = _startMinutesFromSched(sched);
-    if (startMin == 9999) return null;
-
-    final base = DateTime(now.year, now.month, now.day);
-    return base.add(Duration(minutes: startMin));
-  }
-
   DateTime? _scheduleEndToday(String sched) {
     final now = DateTime.now();
     final dayStr = sched.split(':').first.trim().toLowerCase();
@@ -571,10 +578,6 @@ class _DashboardState extends State<Dashboard> {
     }
   }
 
-
-  DateTime _startOfDay(DateTime d) => DateTime(d.year, d.month, d.day);
-  DateTime _endOfDay(DateTime d) => DateTime(d.year, d.month, d.day, 23, 59, 59);
-
   Future<void> _autoEndSessionsBySched() async {
     try {
       final uid = Supabase.instance.client.auth.currentUser?.id;
@@ -633,7 +636,7 @@ class _DashboardState extends State<Dashboard> {
           if ((existingEnded as List).isEmpty) {
             await Supabase.instance.client.from('class_sessions').insert({
               'class_id': classId,
-              'status': 'system ended',
+              'status': 'system ended (session was not started)',
               'ended_at': now.toIso8601String(),
             });
 
@@ -673,33 +676,10 @@ class _DashboardState extends State<Dashboard> {
           }
         }
       }
-
-      // ✅ send notif once if may na-end
-      if (endedSomething) {
-        await Supabase.instance.client.functions.invoke(
-          'process_notification_queue',
-          body: {'limit': 50},
-        );
-      }
     } catch (e) {
       debugPrint('auto end error: $e');
     }
   }
-
-  /*Future<void> _setAttendanceTimeoutToEndedAt({
-    required String sessionId,
-    required String endedAtIso,
-  }) async {
-    final supabase = Supabase.instance.client;
-
-    // set time_out ONLY for present/late na wala pang time_out
-    await supabase
-        .from('attendance')
-        .update({'time_out': endedAtIso})
-        .eq('session_id', sessionId)
-        .inFilter('status', ['present', 'late'])
-        .filter('time_out', 'is', null);
-  }*/
 
   Future<void> _finalizeAttendanceOnAutoEnd({
     required String classId,
@@ -794,6 +774,13 @@ class _DashboardState extends State<Dashboard> {
     ) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isUpcoming = session == 'Upcoming' || session == 'Ended';
+    final s = session.trim(); // important kung may trailing spaces
+
+    final isEnded = s == 'Ended' || s == 'System Ended' || s == 'system ended';
+    final isStarted = s == 'Session Started';
+    final isPending = s == 'Pending';
+
+    final showArrow = !isEnded && (isStarted || (isPending && _canStartFromSched10mins(sched)));
 
     return Opacity(
       opacity: isUpcoming ? 0.5 : 1.0,
@@ -840,7 +827,7 @@ class _DashboardState extends State<Dashboard> {
                       SizedBox(height: 10,),
                     ],
                   ),
-                  session == 'Pending' || session == 'Session Started'
+                  showArrow
                       ? IconButton(
                     onPressed: () async {
                       await Navigator.push(
