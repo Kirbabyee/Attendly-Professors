@@ -545,7 +545,7 @@ class _DashboardState extends State<Dashboard> {
     // ✅ DB is the single source of truth
     _tick = Timer.periodic(const Duration(minutes: 1), (_) async {
       if (!mounted) return;
-      await _autoEndSessionsBySched();
+      /*await _autoEndSessionsBySched();*/
       await _loadClasses();
     });
   }
@@ -636,7 +636,7 @@ class _DashboardState extends State<Dashboard> {
           if ((existingEnded as List).isEmpty) {
             await Supabase.instance.client.from('class_sessions').insert({
               'class_id': classId,
-              'status': 'system ended (session was not started)',
+              'status': 'system ended',
               'ended_at': now.toIso8601String(),
             });
 
@@ -652,7 +652,7 @@ class _DashboardState extends State<Dashboard> {
           final schedEnd = _scheduleEndToday(sched);
           if (schedEnd == null) continue;
 
-          final endAt = schedEnd.add(const Duration(minutes: 2)); // ✅ your test
+          final endAt = schedEnd.add(const Duration(minutes: 10)); // ✅ your test
 
           if (now.isAfter(endAt)) {
             final endedAtIso = now.toIso8601String();

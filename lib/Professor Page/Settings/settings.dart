@@ -3,6 +3,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../main.dart';
+import '../Notification/push_token_service.dart';
 import '../professor_session.dart';
 import 'change_email.dart';
 import 'privacy_policy.dart';
@@ -301,9 +302,25 @@ class _SettingsState extends State<Settings> {
                                       if (profId == null) return;
 
                                       try {
+                                        final svc = PushTokenService(supabase);
 
-                                        await _loadProfessor(force: true); // ✅ refresh UI from DB
+                                        // 1) update preference in professors table
+                                        await supabase
+                                            .from('professors')
+                                            .update({'push_enabled': value})
+                                            .eq('id', profId);
 
+                                        // 2) token behavior
+                                        // 2) token behavior (NEW RULES)
+                                        if (value) {
+                                          await FirebaseMessaging.instance.requestPermission(alert: true, badge: true, sound: true);
+                                          await svc.replaceTokenForUser(professorId: profId); // ✅ delete old then add new
+                                        } else {
+                                          await svc.removeAllForUser(professorId: profId); // ✅ remove tokens
+                                        }
+
+                                        // 3) refresh UI from DB
+                                        await _loadProfessor(force: true);
                                       } catch (e) {
                                         if (!mounted) return;
                                         setState(() => isNotificationOn = prev);
@@ -790,6 +807,14 @@ class _SettingsState extends State<Settings> {
                             } catch (e) {
                               print(e);
                             }
+                          }
+
+                          final profId = _professor?['id']?.toString();
+                          if (profId != null) {
+                            try {
+                              final svc = PushTokenService(supabase);
+                              await svc.removeAllForUser(professorId: profId); // ✅ logout = remove tokens
+                            } catch (_) {}
                           }
 
                           // 3) sign out

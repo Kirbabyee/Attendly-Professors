@@ -225,16 +225,36 @@ class _StartSessionState extends State<StartSession> {
         final supabase = Supabase.instance.client;
 
         // ✅ create session row
-        await supabase.from('class_sessions').insert({
+        final inserted = await supabase
+            .from('class_sessions')
+            .insert({
           'class_id': widget.classId,
           'started_at': DateTime.now().toIso8601String(),
           'status': 'started',
-        });
+        })
+            .select('id')
+            .single();
+
+        final sessionId = inserted['id'];
 
         final session = supabase.auth.currentSession;
 
         if (session == null) {
           throw Exception("Not logged in / session expired.");
+        }
+
+        try {
+          await supabase.functions.invoke(
+            'process_notification',
+            body: {
+              'reason': 'start_session',
+              'class_id': widget.classId,
+              'session_id': sessionId,
+            },
+          );
+        } catch (e) {
+          // ok lang: queued pa rin, puwede cron/backoff later
+          debugPrint('process_notification invoke failed: $e');
         }
 
         if (!mounted) return;

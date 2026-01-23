@@ -8,6 +8,7 @@ import 'package:professor/Professor%20Page/terms_and_conditions.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'Professor Page/History/history.dart';
+import 'Professor Page/Notification/notification_ui.dart';
 import 'Professor Page/Settings/account_information.dart';
 import 'Professor Page/Settings/change_password.dart';
 import 'Professor Page/Settings/settings.dart';
@@ -18,10 +19,33 @@ import 'firebase_options.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  // ✅ MUST init firebase in bg isolate
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  // optional: do lightweight work only
+  // print('BG message: ${message.messageId}');
 }
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // ✅ 1) init Firebase BEFORE messaging
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  // ✅ 2) register background handler (BEFORE runApp)
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+  await NotificationUI.initOnce();
+
+  FirebaseMessaging.onMessage.listen((msg) async {
+    // ✅ show banner even when app is open
+    await NotificationUI.showFromMessage(msg);
+  });
+
+  // ✅ 5) Supabase init
   await Supabase.initialize(
     url: 'https://ucfundmbawljngzowzgd.supabase.co',
     anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjZnVuZG1iYXdsam5nem93emdkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc1OTY5NDQsImV4cCI6MjA4MzE3Mjk0NH0.rPcB5ZIHZ77hR2DzXHKwJp8nF-IJH-bmICzioCma5Bk',

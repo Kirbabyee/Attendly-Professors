@@ -561,13 +561,31 @@ class _EndSessionState extends State<EndSession> {
         final endedAtIso = DateTime.now().toIso8601String();
         // ✅ end the active session for this class
         await _finalizeAttendanceAndLogHistory(endedAtIso);
-        await supabase.from('class_sessions').update({
+        final inserted = await supabase.from('class_sessions').update({
           'status': 'ended',
           'ended_at': endedAtIso,
         }).eq('class_id', widget.classId)
-            .eq('status', 'started');
+            .eq('status', 'started')
+            .select('id')
+            .single();
 
         await _loadData();
+
+        final sessionId = inserted['id'];
+
+        try {
+          await supabase.functions.invoke(
+            'process_notification',
+            body: {
+              'reason': 'start_session',
+              'class_id': widget.classId,
+              'session_id': sessionId,
+            },
+          );
+        } catch (e) {
+          // ok lang: queued pa rin, puwede cron/backoff later
+          debugPrint('process_notification invoke failed: $e');
+        }
 
         if (!mounted) return;
         widget.onEnded(); // ✅ pop back via ClassSession

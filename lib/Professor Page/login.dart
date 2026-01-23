@@ -9,6 +9,7 @@ import 'package:professor/Professor%20Page/two_fa_verification.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../main.dart';
+import 'Notification/push_token_service.dart';
 import 'mainshell.dart';
 
 class Login extends StatefulWidget {
@@ -360,10 +361,13 @@ class _LoginState extends State<Login> {
                               throw Exception("User has no data");
                             }
 
+                            final token = await FirebaseMessaging.instance.getToken();
+                            print('FCM token: $token');
+
                             // To check if the account is for student
                             final profRow = await supabase
                                 .from('professors')
-                                .select('id, terms_conditions, two_fa_enabled')
+                                .select('id, email, terms_conditions, two_fa_enabled, push_enabled')
                                 .eq('id', uid)
                                 .maybeSingle();
 
@@ -413,8 +417,6 @@ class _LoginState extends State<Login> {
                                   body: {'email': emailToUse},
                                 );
 
-                                print('dito na');
-
                                 debugPrint(res.data);
                               } catch (_) {
                                 // ok lang, user can resend inside modal
@@ -455,8 +457,21 @@ class _LoginState extends State<Login> {
 
                             // ✅ terms after 2FA
                             if (terms != 1) {
+                              // optional: you can still sync tokens here if you consider them "logged in"
+                              // but safest: do NOT register token until fully accepted terms
                               Navigator.of(context).pushNamedAndRemoveUntil('/terms_conditions', (r) => false);
                               return;
+                            }
+
+                            // ✅ NOW fully authenticated + passed 2FA + accepted terms
+                            final pushEnabled = (profRow['push_enabled'] == true);
+                            final svc = PushTokenService(supabase);
+
+                            if (pushEnabled) {
+                              await FirebaseMessaging.instance.requestPermission(alert: true, badge: true, sound: true);
+                              await svc.replaceTokenForUser(professorId: uid); // ✅ delete old then add new
+                            } else {
+                              await svc.removeAllForUser(professorId: uid);    // ✅ cleanup tokens
                             }
 
                             Navigator.of(context).pushNamedAndRemoveUntil('/mainshell', (r) => false);
