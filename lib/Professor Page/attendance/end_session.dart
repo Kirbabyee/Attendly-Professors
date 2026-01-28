@@ -558,7 +558,7 @@ class _EndSessionState extends State<EndSession> {
       try {
         final supabase = Supabase.instance.client;
 
-        final endedAtIso = DateTime.now().toIso8601String();
+        final endedAtIso = DateTime.now().toUtc().toIso8601String();
         // ✅ end the active session for this class
         await _finalizeAttendanceAndLogHistory(endedAtIso);
         final inserted = await supabase.from('class_sessions').update({
@@ -805,7 +805,7 @@ class _EndSessionState extends State<EndSession> {
                                         : _startedAt == null
                                         ? 'Session Started'
                                         : 'Session Started at ${DateFormat(
-                                        'h:mm a').format(_startedAt!)}',
+                                        'h:mm a').format(_startedAt!.toLocal())}',
                                     style: const TextStyle(
                                       fontSize: 11,
                                       color: Color(0xFF043B6F),

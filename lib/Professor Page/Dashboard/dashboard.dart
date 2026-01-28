@@ -578,7 +578,7 @@ class _DashboardState extends State<Dashboard> {
     }
   }
 
-  Future<void> _autoEndSessionsBySched() async {
+  /*Future<void> _autoEndSessionsBySched() async {
     try {
       final uid = Supabase.instance.client.auth.currentUser?.id;
       if (uid == null) return;
@@ -652,7 +652,7 @@ class _DashboardState extends State<Dashboard> {
           final schedEnd = _scheduleEndToday(sched);
           if (schedEnd == null) continue;
 
-          final endAt = schedEnd.add(const Duration(minutes: 10)); // ✅ your test
+          final endAt = schedEnd.add(const Duration(minutes: 2)); // ✅ your test
 
           if (now.isAfter(endAt)) {
             final endedAtIso = now.toIso8601String();
@@ -741,7 +741,7 @@ class _DashboardState extends State<Dashboard> {
         .eq('session_id', sessionId)
         .inFilter('status', ['present', 'late'])
         .filter('time_out', 'is', null);
-  }
+  }*/
 
   Widget textBold(tag, name, double screenHeight) {
     return Text.rich(

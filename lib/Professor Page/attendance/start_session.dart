@@ -229,7 +229,7 @@ class _StartSessionState extends State<StartSession> {
             .from('class_sessions')
             .insert({
           'class_id': widget.classId,
-          'started_at': DateTime.now().toIso8601String(),
+          'started_at': DateTime.now().toUtc().toIso8601String(),
           'status': 'started',
         })
             .select('id')
