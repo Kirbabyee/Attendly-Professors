@@ -372,10 +372,12 @@ class _DataFilterState extends State<DataFilter> {
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Container(
+                                Expanded(
                                   child: Text(
                                     selectedRange == null ? 'Select date' : _fmtRange(selectedRange!),
+                                    maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
+                                    softWrap: false,
                                     style: const TextStyle(fontSize: 12, color: Colors.black),
                                   ),
                                 ),

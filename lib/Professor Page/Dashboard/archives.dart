@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'class_item.dart';
 import 'dashboard.dart';
@@ -18,19 +19,50 @@ class Archives extends StatefulWidget {
   State<Archives> createState() => _ArchivesState();
 }
 
-
-
 class _ArchivesState extends State<Archives> {
+  Future<void> _restoreClass({
+    required String classId,
+    required ClassItem item,
+    required int index,
+  }) async {
+    final supabase = Supabase.instance.client;
 
-  Widget classCard(String course,
+    try {
+      // ✅ update DB
+      await supabase
+          .from('classes')
+          .update({'archived': false})
+          .eq('id', classId);
+
+      if (!mounted) return;
+
+      // ✅ update UI
+      setState(() {
+        widget.archivedClasses.removeAt(index);
+      });
+
+      // ✅ send back to dashboard
+      widget.onRestore(item);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to restore class: $e')),
+      );
+    }
+  }
+
+
+  Widget classCard(
+      String classId,
+      String course,
       String classCode,
       String professor,
       String room,
       String sched,
       String session,
       double screenHeight,
-      VoidCallback onArchive,
-      ) {
+      Future<void> Function() onRestore, // ✅ async
+    ) {
     final screenWidth = MediaQuery.of(context).size.width;
     return Container(
       margin: EdgeInsets.symmetric(vertical: screenHeight > 700 ? 20 : 12),
@@ -94,7 +126,7 @@ class _ArchivesState extends State<Archives> {
                   onSelected: (value) async {
                     if (value == 'restore') {
                       final ok = await _confirmArchive();
-                      if (ok) onArchive();
+                      if (ok) await onRestore();
                     }
                   },
                 ),
@@ -284,6 +316,7 @@ class _ArchivesState extends State<Archives> {
                   final c = widget.archivedClasses[index];
 
                   return classCard(
+                    c.id,          // ✅ class id
                     c.course,
                     c.courseCode,
                     c.professor,
@@ -291,12 +324,12 @@ class _ArchivesState extends State<Archives> {
                     c.sched,
                     c.session,
                     screenHeight,
-                        () {
-                      setState(() {
-                        widget.archivedClasses.removeAt(index); // remove from archive UI
-                      });
-
-                      widget.onRestore(c); // send back to Dashboard classes
+                        () async {
+                      await _restoreClass(
+                        classId: c.id,
+                        item: c,
+                        index: index,
+                      );
                     },
                   );
                 },

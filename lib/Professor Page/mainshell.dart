@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:professor/Professor%20Page/Help/help.dart';
 
 import '../widgets/navbar.dart';
+import 'Dashboard/notification_ui.dart';
 import 'Settings/settings.dart';
 import 'Dashboard/dashboard.dart';
 import 'History/history.dart';
@@ -20,36 +21,63 @@ class Mainshell extends StatefulWidget {
 }
 
 class _MainshellState extends State<Mainshell> {
-  late int _index; // Home selected by default (match your navbar order)
+  final GlobalKey<ScaffoldState> _shellKey = GlobalKey<ScaffoldState>();
 
-  final List<Widget> _pages = const [
-    Dashboard(unRead: true),
-    History(),
-    Help(),
-    Settings()
-  ];
+  late int _index;
+
+  bool _unRead = true; // ✅ ito ang source of truth
+
+  late final List<Widget> _pages;
 
   @override
   void initState() {
     super.initState();
     _index = widget.initialIndex;
+
+    _pages = [
+      Dashboard(
+        unRead: _unRead,
+        onOpenNotifications: openNotifications,
+      ),
+      const History(),
+      const Help(),
+      const Settings(),
+    ];
   }
+
+  void openNotifications() {
+    _shellKey.currentState?.openEndDrawer();
+  }
+
+  void _handleUnreadChanged(bool v) {
+    if (!mounted) return;
+    setState(() => _unRead = v);
+
+    // ✅ IMPORTANT: update dashboard instance too
+    _pages[0] = Dashboard(
+      unRead: _unRead,
+      onOpenNotifications: openNotifications,
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final screenHeight = MediaQuery.of(context).size.width;
     return Scaffold(
+      key: _shellKey,
+      endDrawer: NotificationsDrawer(
+        unRead: _unRead,
+        onUnreadChanged: _handleUnreadChanged, // ✅ eto yung update
+      ),
       body: IndexedStack(
         index: _index,
         children: _pages,
       ),
       bottomNavigationBar: AttendlyNavBar(
-        screenHeight: screenHeight,
+        screenHeight: MediaQuery.of(context).size.width,
         currentIndex: _index,
-        onTap: (i) {
-          setState(() {
-            _index = i;
-          });
-        },
+        onTap: (i) => setState(() => _index = i),
       ),
     );
   }
 }
+

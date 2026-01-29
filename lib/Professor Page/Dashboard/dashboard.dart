@@ -15,10 +15,12 @@ import 'notification_ui.dart';
 
 class Dashboard extends StatefulWidget {
   final bool unRead;
+  final VoidCallback onOpenNotifications;
 
   const Dashboard({
     super.key,
-    required this.unRead
+    required this.unRead,
+    required this.onOpenNotifications,
   });
   @override
   State<Dashboard> createState() => _DashboardState();
@@ -961,8 +963,31 @@ class _DashboardState extends State<Dashboard> {
 
                     onSelected: (value) async {
                       if (value == 'archive') {
+                        // 1st confirmation
                         final ok = await _confirmArchive();
-                        if (ok) onArchive();
+                        if (!ok) return;
+
+                        final s = session.trim();
+                        final isStarted = s == 'Session Started';
+
+                        // 2nd confirmation + end session if started
+                        if (isStarted) {
+                          final ok2 = await _confirmArchiveStartedSessionEnd();
+                          if (!ok2) return;
+
+                          try {
+                            await _endActiveSessionForClass(id);
+                          } catch (e) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Failed to end session: $e')),
+                            );
+                            return; // stop archive if end failed
+                          }
+                        }
+
+                        // then archive
+                        onArchive();
                       }
 
                       if (value == 'edit') {
@@ -1067,7 +1092,62 @@ class _DashboardState extends State<Dashboard> {
 
     return result ?? false;
   }
+  Future<bool> _confirmArchiveStartedSessionEnd() async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: const Text(
+          'Session is currently started',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+        content: const Text(
+          'Archiving this class will END the ongoing session. Continue?',
+          style: TextStyle(fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.black)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('End & Archive', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
 
+    return result ?? false;
+  }
+
+  Future<void> _endActiveSessionForClass(String classId) async {
+    final sb = Supabase.instance.client;
+
+    // get latest started session for this class
+    final sessionRow = await sb
+        .from('class_sessions')
+        .select('id')
+        .eq('class_id', classId)
+        .eq('status', 'started')
+        .order('started_at', ascending: false)
+        .maybeSingle();
+
+    final sessionId = sessionRow?['id'] as String?;
+    if (sessionId == null) return; // nothing to end
+
+    await sb.from('class_sessions').update({
+      'status': 'ended', // or 'system ended' if you prefer
+      'ended_at': DateTime.now().toIso8601String(),
+    }).eq('id', sessionId);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1080,13 +1160,6 @@ class _DashboardState extends State<Dashboard> {
     final firstName = displayName.trim().split(' ').first;
 
     return Scaffold(
-      key: _scaffoldKey,
-      endDrawer: NotificationsDrawer(
-        unRead: unRead,
-        onUnreadChanged: (value) {
-          setState(() => unRead = value);
-        },
-      ),
       body: SafeArea(
         child: Column(
           children: [
@@ -1110,13 +1183,11 @@ class _DashboardState extends State<Dashboard> {
                       clipBehavior: Clip.none,
                       children: [
                         IconButton(
-                          onPressed: () {
-                            _scaffoldKey.currentState?.openEndDrawer();
-                          },
+                          onPressed: widget.onOpenNotifications,
                           icon: const Icon(CupertinoIcons.bell),
                           color: Colors.white,
                         ),
-                        if (unRead)
+                        if (widget.unRead)
                           Positioned(
                             right: 10,
                             top: 10,
