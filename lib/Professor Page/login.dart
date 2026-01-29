@@ -367,18 +367,46 @@ class _LoginState extends State<Login> {
                             // To check if the account is for student
                             final profRow = await supabase
                                 .from('professors')
-                                .select('id, email, terms_conditions, two_fa_enabled, push_enabled')
+                                .select('id, email, terms_conditions, two_fa_enabled, push_enabled, status, archived')
                                 .eq('id', uid)
                                 .maybeSingle();
 
                             if (profRow == null) {
-                              // Block login if no returns, means not a student account
                               await supabase.auth.signOut();
                               if (!mounted) return;
-                              Navigator.pop(context); // close loading
+                              Navigator.pop(context);
 
                               setState(() {
-                                _loginError = 'This account is not allowed in the Student app.';
+                                _loginError = 'Invalid email or password';
+                              });
+                              _formKey.currentState!.validate();
+                              return;
+                            }
+
+                            // archived: behave like “does not exist”
+                            final isArchived = (profRow['archived'] == true);
+                            if (isArchived) {
+                              await supabase.auth.signOut();
+                              if (!mounted) return;
+                              Navigator.pop(context);
+
+                              setState(() {
+                                _loginError = 'Invalid email or password'; // same as wrong login
+                              });
+                              _formKey.currentState!.validate();
+                              return;
+                            }
+
+                            // inactive: show your custom message
+                            final status = (profRow['status'] ?? '').toString().trim().toLowerCase();
+                            if (status == 'inactive') {
+                              await supabase.auth.signOut();
+                              if (!mounted) return;
+                              Navigator.pop(context);
+
+                              setState(() {
+                                _loginError =
+                                'This account has been deactivated.';
                               });
                               _formKey.currentState!.validate();
                               return;

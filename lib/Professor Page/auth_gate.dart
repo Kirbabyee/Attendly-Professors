@@ -112,7 +112,7 @@ class _AuthGateState extends State<AuthGate> with SingleTickerProviderStateMixin
       try {
         final row = await supabase
             .from('professors')
-            .select('terms_conditions, two_fa_enabled, email')
+            .select('terms_conditions, two_fa_enabled, email, status, archived')
             .eq('id', session.user.id)
             .maybeSingle();
 
@@ -123,6 +123,23 @@ class _AuthGateState extends State<AuthGate> with SingleTickerProviderStateMixin
 
         final emailReal = (row?['email'] ?? '').toString().trim().toLowerCase();
         if (emailReal.isNotEmpty) emailToUse = emailReal;
+
+        // ✅ if no professor row, or archived/inactive → logout
+        final isArchived = (row?['archived'] == true);
+        final status = (row?['status'] ?? '').toString().trim().toLowerCase();
+
+        if (row == null || isArchived || status == 'inactive') {
+          await supabase.auth.signOut();
+          ProfessorSession.clear();
+
+          if (!mounted) return;
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const LandingPage()),
+                (route) => false,
+          );
+          return;
+        }
+
       } catch (_) {
         // safe default: not accepted / block
         terms = 0;
