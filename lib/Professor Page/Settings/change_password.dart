@@ -122,8 +122,8 @@ class _ChangePasswordState extends State<ChangePassword> {
     }
   }
 
-
   Future<bool> _showOtpModal({
+    required String email, // ✅ add
     required String password,
     required Future<void> Function() onResend,
     required Future<void> Function(String otp) onVerify,
@@ -133,6 +133,7 @@ class _ChangePasswordState extends State<ChangePassword> {
       context: context,
       barrierDismissible: false,
       builder: (_) => _OtpDialog(
+        email: email, // ✅ pass
         password: password,
         cooldownSeconds: cooldownSeconds,
         onResend: onResend,
@@ -465,8 +466,11 @@ class _ChangePasswordState extends State<ChangePassword> {
                 if (!mounted) return;
 
                 // 2) show OTP modal (same component mo from change email)
+                final currentEmail = supabase.auth.currentUser?.email ?? '';
+
                 final verified = await _showOtpModal(
-                  password: newPw, // optional display text lang
+                  email: currentEmail, // ✅ add
+                  password: newPw,
                   cooldownSeconds: 60,
                   onResend: () => _sendOtpForChangePassword(),
                   onVerify: (otp) => _verifyOtpAndChangePassword(otp, newPw),
@@ -506,15 +510,16 @@ class _ChangePasswordState extends State<ChangePassword> {
   }
 }
 
-String? _otpError; // ✅ show warning + red border
 
 class _OtpDialog extends StatefulWidget {
+  final String email; // ✅ add
   final String password;
   final int cooldownSeconds;
   final Future<void> Function() onResend;
   final Future<void> Function(String otp) onVerify;
 
   const _OtpDialog({
+    required this.email, // ✅ add
     required this.password,
     required this.cooldownSeconds,
     required this.onResend,
@@ -526,6 +531,25 @@ class _OtpDialog extends StatefulWidget {
 }
 
 class _OtpDialogState extends State<_OtpDialog> {
+  String? _otpError; // ✅ show warning + red border
+  String maskEmail(String email) {
+    final e = email.trim();
+    final at = e.indexOf('@');
+    if (at <= 1) return email; // fallback
+
+    final local = e.substring(0, at);
+    final domain = e.substring(at); // kasama na '@'
+
+    if (local.length <= 2) {
+      return '${local[0]}*${domain}';
+    }
+
+    final start = local.substring(0, 1);
+    final end = local.substring(local.length - 1);
+
+    return '$start${'*' * (local.length - 2)}$end$domain';
+  }
+
   final _otp = TextEditingController();
   Timer? _t;
   int _left = 0;
@@ -574,10 +598,10 @@ class _OtpDialogState extends State<_OtpDialog> {
           children: [
             const Text('Enter OTP', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
             const SizedBox(height: 8),
-            const Text(
-              'We sent a 6-digit OTP to your email.\nPlease enter it below.',
+            Text(
+              'We sent a 6-digit OTP to:\n${maskEmail(widget.email)}.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12),
+              style: const TextStyle(fontSize: 12),
             ),
             const SizedBox(height: 14),
 

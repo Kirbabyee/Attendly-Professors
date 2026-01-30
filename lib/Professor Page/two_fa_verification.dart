@@ -46,6 +46,24 @@ class TwoFAVerificationPage extends StatefulWidget {
 }
 
 class _TwoFAVerificationPageState extends State<TwoFAVerificationPage> {
+  String maskEmail(String email) {
+    final e = email.trim();
+    final at = e.indexOf('@');
+    if (at <= 1) return email; // fallback
+
+    final local = e.substring(0, at);
+    final domain = e.substring(at); // kasama na '@'
+
+    if (local.length <= 2) {
+      return '${local[0]}*${domain}';
+    }
+
+    final start = local.substring(0, 1);
+    final end = local.substring(local.length - 1);
+
+    return '$start${'*' * (local.length - 2)}$end$domain';
+  }
+
   // ✅ one controller only
   final _otp = TextEditingController();
   final _otpFocus = FocusNode();
@@ -197,10 +215,9 @@ class _TwoFAVerificationPageState extends State<TwoFAVerificationPage> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    "We sent a 6-digit OTP to your email.\nPlease enter it below.",
+                    "We sent a 6-digit OTP to:\n${maskEmail(widget.email)}.",
                     textAlign: TextAlign.center,
-                    style:
-                    TextStyle(fontSize: 12.5, color: Colors.black.withOpacity(0.65)),
+                    style: TextStyle(fontSize: 12.5, color: Colors.black.withOpacity(0.65)),
                   ),
                   const SizedBox(height: 14),
 
