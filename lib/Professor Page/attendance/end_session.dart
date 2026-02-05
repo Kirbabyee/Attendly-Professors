@@ -79,14 +79,6 @@ class _EndSessionState extends State<EndSession> {
               ),
               SizedBox(
                 height: 32,
-                child: TextButton(
-                  onPressed: () => Navigator.pop(context, 'excused'),
-                  child: const Text('Excuse',
-                      style: TextStyle(fontSize: 12, color: Colors.orange)),
-                ),
-              ),
-              SizedBox(
-                height: 32,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF018832),

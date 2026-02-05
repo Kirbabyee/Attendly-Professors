@@ -10,9 +10,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'Professor Page/History/history.dart';
 import 'Professor Page/Notification/notification_ui.dart';
 import 'Professor Page/Settings/account_information.dart';
+import 'Professor Page/Settings/add_device.dart';
 import 'Professor Page/Settings/change_password.dart';
 import 'Professor Page/Settings/settings.dart';
 import 'Professor Page/auth_gate.dart';
+import 'Professor Page/device_registration.dart';
 import 'Professor Page/forgot_password.dart';
 import 'Professor Page/login.dart';
 import 'firebase_options.dart';
@@ -78,6 +80,8 @@ class MyApp extends StatelessWidget {
         '/mainshell': (context) => Mainshell(),
         '/new_password': (context) => NewPassword(),
         '/terms_conditions': (context) => ProfTermsAndConditionsPage(),
+        '/add_device': (context) => AddDevice(),
+        '/device_registration': (context) => DeviceRegistration(),
       },
     );
   }

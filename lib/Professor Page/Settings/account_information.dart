@@ -314,7 +314,7 @@ class _AccountInformationState extends State<AccountInformation> {
                   IconButton(
                     onPressed: () {
                       Navigator.of(context).pushReplacement(
-                        MaterialPageRoute(builder: (_) => const Mainshell(initialIndex: 2,)),
+                        MaterialPageRoute(builder: (_) => const Mainshell(initialIndex: 3,)),
                       );
                     },
                     icon: Icon(CupertinoIcons.arrow_left)

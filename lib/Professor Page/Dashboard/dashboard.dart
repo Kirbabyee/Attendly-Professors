@@ -1,8 +1,10 @@
 import 'dart:async';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
 import 'package:professor/Professor%20Page/attendance/class_session.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -107,6 +109,21 @@ class _FloatingToastState extends State<_FloatingToast>
 }
 
 class _DashboardState extends State<Dashboard> {
+  bool _offline = false;
+  StreamSubscription? _connSub;
+
+  Future<bool> _hasInternet() async {
+    final conn = await Connectivity().checkConnectivity();
+    if (conn == ConnectivityResult.none) return false;
+    return InternetConnection().hasInternetAccess;
+  }
+
+  Future<void> _updateOffline() async {
+    final ok = await _hasInternet();
+    if (!mounted) return;
+    setState(() => _offline = !ok);
+  }
+
   bool _canStartFromSched10mins(String sched) {
     final now = DateTime.now();
     final dayStr = sched.split(':').first.trim().toLowerCase();
@@ -260,6 +277,14 @@ class _DashboardState extends State<Dashboard> {
   Timer? _tick;
 
   Future<void> _loadClasses() async {
+    final ok = await _hasInternet();
+    if (!ok) {
+      if (!mounted) return;
+      setState(() => _offline = true);
+      return; // ✅ don't call supabase
+    } else {
+      if (mounted && _offline) setState(() => _offline = false);
+    }
     try {
       final uid = Supabase.instance.client.auth.currentUser?.id;
       if (uid == null) return;
@@ -329,9 +354,7 @@ class _DashboardState extends State<Dashboard> {
     } catch (e) {
       // optional: show snackbar
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to load classes: $e')),
-      );
+      setState(() => _offline = true);
     }
   }
 
@@ -542,12 +565,28 @@ class _DashboardState extends State<Dashboard> {
 
     unRead = widget.unRead;
 
-    _loadProfessor().then((_) => _loadClasses());
+    // ✅ start connectivity watcher
+    _connSub = Connectivity().onConnectivityChanged.listen((_) async {
+      await _updateOffline();
 
-    // ✅ DB is the single source of truth
+      // optional: pag balik internet, reload once
+      if (!_offline && mounted) {
+        await _loadProfessor();
+        await _loadClasses();
+      }
+    });
+
+    // initial offline check + initial load
+    _updateOffline().then((_) async {
+      if (_offline) return;
+      await _loadProfessor();
+      await _loadClasses();
+    });
+
+    // ✅ DB is the single source of truth (but don't spam when offline)
     _tick = Timer.periodic(const Duration(minutes: 1), (_) async {
       if (!mounted) return;
-      /*await _autoEndSessionsBySched();*/
+      if (_offline) return; // ✅ skip reload while offline
       await _loadClasses();
     });
   }
@@ -555,10 +594,23 @@ class _DashboardState extends State<Dashboard> {
   @override
   void dispose() {
     _tick?.cancel();
+    _connSub?.cancel();
     super.dispose();
   }
 
   Future<void> _loadProfessor() async {
+    final ok = await _hasInternet();
+    if (!ok) {
+      if (!mounted) return;
+      setState(() {
+        _offline = true;
+        _loadingProf = false; // ✅ stop spinner
+        _profErr = null;      // ✅ no supabase error text
+      });
+      return;
+    } else {
+      if (mounted && _offline) setState(() => _offline = false);
+    }
     setState(() {
       _loadingProf = true;
       _profErr = null;
@@ -1268,7 +1320,22 @@ class _DashboardState extends State<Dashboard> {
             Expanded(
               child: RefreshIndicator(
                 onRefresh: () async {
-                  // refresh prof + classes
+                  final ok = await _hasInternet();
+                  if (!ok) {
+                    if (!mounted) return;
+                    setState(() => _offline = true);
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('No internet connection'),
+                        behavior: SnackBarBehavior.floating,
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                    return;
+                  }
+
+                  setState(() => _offline = false);
                   await _loadProfessor();
                   await _loadClasses();
                 },

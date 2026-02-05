@@ -1,7 +1,10 @@
+import 'dart:async';
 import 'dart:io';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -33,6 +36,25 @@ class DataFilter extends StatefulWidget {
 }
 
 class _DataFilterState extends State<DataFilter> {
+  bool _offline = false;
+  StreamSubscription? _connSub;
+
+  Future<bool> _hasInternet() async {
+    final conn = await Connectivity().checkConnectivity();
+    if (conn == ConnectivityResult.none) return false;
+    return InternetConnection().hasInternetAccess;
+  }
+
+  void _showNoInternetSnack() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('No internet connection'),
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
   final supabase = Supabase.instance.client;
 
   bool _loading = true;
@@ -54,11 +76,34 @@ class _DataFilterState extends State<DataFilter> {
   @override
   void initState() {
     super.initState();
-    _loadSessions(); // ✅ load from DB instead of hardcoded list
+
+    // optional watcher: pag bumalik net, pwede mag reload
+    _connSub = Connectivity().onConnectivityChanged.listen((_) async {
+      final ok = await _hasInternet();
+      if (!mounted) return;
+      setState(() => _offline = !ok);
+    });
+
+    _loadSessions();
   }
 
   Future<void> _loadSessions() async {
+    final ok = await _hasInternet();
+    if (!ok) {
+      if (!mounted) return;
+      setState(() {
+        _offline = true;
+        _loading = false;
+        _err = null; // ✅ wag supabase error
+        // keep old data on screen
+      });
+      _showNoInternetSnack();
+      return;
+    }
+
+    if (!mounted) return;
     setState(() {
+      _offline = false;
       _loading = true;
       _err = null;
     });
@@ -149,9 +194,11 @@ class _DataFilterState extends State<DataFilter> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _err = e.toString();
+        _offline = true;
         _loading = false;
+        _err = null;
       });
+      _showNoInternetSnack();
     }
   }
 
@@ -304,6 +351,7 @@ class _DataFilterState extends State<DataFilter> {
 
   @override
   void dispose() {
+    _connSub?.cancel();
     searchController.dispose();
     super.dispose();
   }
@@ -522,6 +570,12 @@ class _DataFilterState extends State<DataFilter> {
                                     side: BorderSide.none,
                                   ),
                                   onPressed: () async {
+                                    final ok = await _hasInternet();
+                                    if (!ok) {
+                                      if (!mounted) return;
+                                      _showNoInternetSnack();
+                                      return;
+                                    }
                                     try {
                                       await exportSessionToExcel(
                                         sessionId: record.sessionId,
