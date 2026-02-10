@@ -632,184 +632,65 @@ class _DashboardState extends State<Dashboard> {
     }
   }
 
-  /*Future<void> _autoEndSessionsBySched() async {
-    try {
-      final uid = Supabase.instance.client.auth.currentUser?.id;
-      if (uid == null) return;
-
-      final now = DateTime.now();
-      bool endedSomething = false; // ✅ IMPORTANT
-
-      final classRows = await Supabase.instance.client
-          .from('classes')
-          .select('id, schedule')
-          .eq('professor_id', uid)
-          .eq('archived', false);
-
-      final classes = (classRows as List).cast<Map<String, dynamic>>();
-      if (classes.isEmpty) return;
-
-      final classIds = classes.map((c) => c['id'] as String).toList();
-
-      final startedRows = await Supabase.instance.client
-          .from('class_sessions')
-          .select('id, class_id')
-          .inFilter('class_id', classIds)
-          .eq('status', 'started');
-
-      final started = (startedRows as List).cast<Map<String, dynamic>>();
-      final startedByClass = <String, String>{};
-      for (final s in started) {
-        startedByClass[(s['class_id'] ?? '').toString()] =
-            (s['id'] ?? '').toString();
-      }
-
-      for (final c in classes) {
-        final classId = (c['id'] ?? '').toString();
-        final sched = (c['schedule'] ?? '').toString();
-        if (classId.isEmpty || sched.trim().isEmpty) continue;
-
-        final statusBySched = _sessionFromSched(sched);
-
-        // ✅ A) Not started -> if schedule ended, insert ended ONCE (today)
-        if (!startedByClass.containsKey(classId) && statusBySched == 'Ended') {
-          final startOfDay =
-          DateTime(now.year, now.month, now.day).toIso8601String();
-          final endOfDay =
-          DateTime(now.year, now.month, now.day, 23, 59, 59).toIso8601String();
-
-          final existingEnded = await Supabase.instance.client
-              .from('class_sessions')
-              .select('id')
-              .eq('class_id', classId)
-              .eq('status', 'system ended')
-              .gte('ended_at', startOfDay)
-              .lte('ended_at', endOfDay)
-              .limit(1);
-
-          if ((existingEnded as List).isEmpty) {
-            await Supabase.instance.client.from('class_sessions').insert({
-              'class_id': classId,
-              'status': 'system ended',
-              'ended_at': now.toIso8601String(),
-            });
-
-            endedSomething = true; // ✅ trigger notif processing
-          }
-
-          continue;
-        }
-
-        // ✅ B) Started -> end at scheduleEnd + 5 mins (auto end)
-        if (startedByClass.containsKey(classId)) {
-          final sessionId = startedByClass[classId]!;
-          final schedEnd = _scheduleEndToday(sched);
-          if (schedEnd == null) continue;
-
-          final endAt = schedEnd.add(const Duration(minutes: 2)); // ✅ your test
-
-          if (now.isAfter(endAt)) {
-            final endedAtIso = now.toIso8601String();
-
-            final updated = await Supabase.instance.client
-                .from('class_sessions')
-                .update({'status': 'system ended', 'ended_at': endedAtIso})
-                .eq('id', sessionId)
-                .eq('status', 'started')
-                .select('id');
-
-            if ((updated as List).isNotEmpty) {
-              await _finalizeAttendanceOnAutoEnd(
-                classId: classId,
-                sessionId: sessionId,
-                endedAtIso: endedAtIso,
-              );
-
-              endedSomething = true;
-            }
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('auto end error: $e');
-    }
-  }
-
-  Future<void> _finalizeAttendanceOnAutoEnd({
-    required String classId,
-    required String sessionId,
-    required String endedAtIso,
-
-    // ✅ add this (student_ids na excused)
-    List<String> excusedIds = const [],
-  }) async {
-    final supabase = Supabase.instance.client;
-
-    // 1) enrolled students
-    final enrolledRows = await supabase
-        .from('class_enrollments')
-        .select('student_id')
-        .eq('class_id', classId);
-
-    final enrolledIds = (enrolledRows as List)
-        .map((r) => (r as Map<String, dynamic>)['student_id'] as String)
-        .toList();
-
-    if (enrolledIds.isEmpty) return;
-
-    // 2) existing attendance for this session
-    final attendanceRows = await supabase
-        .from('attendance')
-        .select('student_id')
-        .eq('session_id', sessionId);
-
-    final existingIds = (attendanceRows as List)
-        .map((r) => (r as Map<String, dynamic>)['student_id'] as String)
-        .toSet();
-
-    // 3) missing = absent/excused
-    final missingIds = enrolledIds.where((sid) => !existingIds.contains(sid)).toList();
-
-    if (missingIds.isNotEmpty) {
-      final excusedSet = excusedIds.toSet();
-
-      final payload = missingIds.map((sid) => {
-        'session_id': sessionId,
-        'student_id': sid,
-        // ✅ excused if included, else absent
-        'status': excusedSet.contains(sid) ? 'excused' : 'absent',
-        'time_in': null,
-        'time_out': null,
-      }).toList();
-
-      await supabase.from('attendance').upsert(
-        payload,
-        onConflict: 'session_id,student_id',
-      );
-    }
-
-    // 4) set time_out for present/late (same ended time)
-    await supabase
-        .from('attendance')
-        .update({'time_out': endedAtIso})
-        .eq('session_id', sessionId)
-        .inFilter('status', ['present', 'late'])
-        .filter('time_out', 'is', null);
-  }*/
-
   Widget textBold(tag, name, double screenHeight) {
     return Text.rich(
       TextSpan(
         text: tag,
-        style: TextStyle(fontSize: screenHeight > 700 ? 14 : 13),
+        style: TextStyle(fontSize: screenHeight * .015),
         children: [
           TextSpan(
             text: name,
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: screenHeight > 700 ? 14 : 13),
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: screenHeight * .015),
           ),
         ],
       ),
     );
+  }
+
+  String _getDeptAbbreviation(String? dept) {
+    if (dept == null || dept.isEmpty) return '-';
+    final d = dept.trim().toUpperCase();
+    if (d.contains('INFORMATION TECHNOLOGY')) return 'IT';
+    if (d.contains('COMPUTER SCIENCE')) return 'CS';
+    if (d.contains('INFORMATION SYSTEMS')) return 'IS';
+    if (d.contains('ENTERTAINMENT AND MULTIMEDIA COMPUTING')) return 'EMC';
+    if (d.contains('INFORMATION AND COMMUNICATIONS TECHNOLOGY')) return 'CICT';
+    
+    // Fallback: take first letters of each word
+    final words = d.split(' ');
+    if (words.length > 1) {
+      return words.where((w) => w.isNotEmpty && w != 'OF' && w != 'AND').map((w) => w[0]).join();
+    }
+    return d;
+  }
+
+  Widget _professorCard(double screenHeight, double screenWidth) {
+    if (_loadingProf) {
+      return const SizedBox(
+        height: 40,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (_profErr != null) {
+      return Text('Error: $_profErr', style: TextStyle(fontSize: screenHeight * .013, color: Colors.red));
+    }
+    if (_prof == null) {
+      return Text('No professor record found', style: TextStyle(fontSize: screenHeight * .013));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        textBold('Name: ', '${_prof?['professor_name'] ?? '-'}', screenHeight),
+        textBold('Dept: ', _getDeptAbbreviation(_prof?['department']), screenHeight),
+        textBold('Email: ', '${_prof?['email'] ?? '-'}', screenHeight),
+      ],
+    );
+  }
+
+  Widget _avatarWidget(double size) {
+    final url = _prof?['avatar_url'] as String?;
+    if (url == null || url.trim().isEmpty) return Image.asset('assets/avatar.png', width: size, height: size);
+    return ClipRRect(borderRadius: BorderRadius.circular(size / 2), child: Image.network(url, width: size, height: size, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Image.asset('assets/avatar.png', width: size, height: size), loadingBuilder: (context, child, loadingProgress) { if (loadingProgress == null) return child; return SizedBox(width: size, height: size, child: const Center(child: CircularProgressIndicator(strokeWidth: 2))); }));
   }
 
   // Classcard Template
@@ -1216,100 +1097,106 @@ class _DashboardState extends State<Dashboard> {
         child: Column(
           children: [
             Container(
-              height: screenHeight > 700 ? 140 : 120,
-              decoration: BoxDecoration(
+              height: screenHeight * .30,
+              decoration: const BoxDecoration(
                 color: Color(0xFF004280),
-                borderRadius: BorderRadius.vertical(
-                  top: Radius.zero,
-                  bottom: Radius.circular(20),
-                ),
+                borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
               ),
-              padding: EdgeInsets.all(10),
+              padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 10),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  // Notification Bell
                   Container(
-                    margin: EdgeInsets.fromLTRB(0,0,15,0),
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        IconButton(
-                          onPressed: widget.onOpenNotifications,
-                          icon: const Icon(CupertinoIcons.bell),
-                          color: Colors.white,
-                        ),
-                        if (widget.unRead)
-                          Positioned(
-                            right: 10,
-                            top: 10,
-                            child: Container(
-                              width: 10,
-                              height: 10,
-                              decoration: const BoxDecoration(
-                                color: Colors.red,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                          ),
-                      ],
-                    )
-                  ),
-                  Container(
-                    margin: EdgeInsets.symmetric(horizontal: 20),
+                    margin: const EdgeInsets.symmetric(horizontal: 20),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      crossAxisAlignment: CrossAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text('Welcome to Attendly',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: screenHeight > 700 ? 14 : 12
-                              )
+                              style: TextStyle(color: Colors.white, fontSize: screenHeight * .016)
                             ),
                             Text(
                               _loadingProf ? 'Loading...' : '$firstName!',
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
-                                fontSize: screenHeight > 700 ? 30 : 25,
+                                fontSize: screenHeight * .025,
                                 color: Colors.white,
                               ),
                             ),
                           ],
                         ),
-                        Container(
-                          decoration: BoxDecoration(
-                            color: Color(0xFFDBEAFE),
-                            borderRadius: BorderRadiusGeometry.circular(8)
-                          ),
-                          child: IconButton(
-                              onPressed: () async {
-                                final saved = await showModalBottomSheet<ClassItem>(
-                                  context: context,
-                                  isScrollControlled: true,
-                                  backgroundColor: Colors.transparent,
-                                  builder: (_) => const CreateClassSheet(),
-                                );
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                IconButton(
+                                  onPressed: () => widget.onOpenNotifications(),
+                                  icon: const Icon(CupertinoIcons.bell),
+                                  color: Colors.white,
+                                ),
+                                if (widget.unRead)
+                                  Positioned(
+                                    right: 10,
+                                    top: 10,
+                                    child: Container(
+                                      width: 10,
+                                      height: 10,
+                                      decoration: const BoxDecoration(
+                                        color: Colors.red,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            Container(
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFDBEAFE),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: IconButton(
+                                onPressed: () async {
+                                  final saved = await showModalBottomSheet<ClassItem>(
+                                    context: context,
+                                    isScrollControlled: true,
+                                    backgroundColor: Colors.transparent,
+                                    builder: (_) => const CreateClassSheet(),
+                                  );
 
-                                if (saved == null) return;
+                                  if (saved == null) return;
 
-                                await _showBlockingLoaderWhile(() async {
-                                  // optional: ensure prof loaded too
-                                  if (_prof == null) {
-                                    await _loadProfessor();
-                                  }
-                                  await _loadClasses(); // ✅ ito ang “duration” na gusto mo
-                                });
-                              },
-                              icon: Icon(
-                            CupertinoIcons.plus,
-                            size: 30,
-                            )
-                          ),
+                                  await _showBlockingLoaderWhile(() async {
+                                    if (_prof == null) {
+                                      await _loadProfessor();
+                                    }
+                                    await _loadClasses();
+                                  });
+                                },
+                                icon: const Icon(CupertinoIcons.plus, size: 30),
+                              ),
+                            ),
+                          ],
                         ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(height: screenHeight > 700 ? 20 : 12),
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 10),
+                    padding: EdgeInsets.all(screenHeight * .022),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      children: [
+                        _avatarWidget(screenWidth * .18),
+                        SizedBox(width: screenWidth * .035),
+                        _professorCard(screenHeight, screenWidth),
                       ],
                     ),
                   ),
@@ -1348,7 +1235,7 @@ class _DashboardState extends State<Dashboard> {
                         Text(
                           'My Classes',
                           style: TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: screenHeight > 700 ? 16 : 14),
+                              fontWeight: FontWeight.bold, fontSize: screenHeight * .017),
                         ),
                         IconButton(
                           onPressed: () {
@@ -1369,7 +1256,7 @@ class _DashboardState extends State<Dashboard> {
                           },
                           icon: Icon(
                             CupertinoIcons.archivebox,
-                            size: screenHeight > 700 ? 25 : 20,
+                            size: screenHeight * .025,
                           ),
                         ),
                       ],
@@ -1447,5 +1334,3 @@ class _DashboardState extends State<Dashboard> {
     }
   }
 }
-
-

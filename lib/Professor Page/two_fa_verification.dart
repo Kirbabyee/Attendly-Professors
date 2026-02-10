@@ -138,6 +138,46 @@ class _TwoFAVerificationPageState extends State<TwoFAVerificationPage> {
     }
   }
 
+  Future<void> _showSuccessModal() async {
+    await showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.check_circle_outline, color: Colors.green, size: 50),
+            const SizedBox(height: 14),
+            const Text(
+              "OTP successfully sent",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              "Please check your email for the new code.",
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF004280),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: () => Navigator.pop(context),
+                child: const Text("Got it!", style: TextStyle(color: Colors.white)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _resend() async {
     if (_remaining > 0) return;
 
@@ -145,6 +185,9 @@ class _TwoFAVerificationPageState extends State<TwoFAVerificationPage> {
     try {
       await widget.onResend();
       if (!mounted) return;
+
+      // ✅ Show Success Modal
+      _showSuccessModal();
 
       _otp.clear();
       _otpFocus.requestFocus();

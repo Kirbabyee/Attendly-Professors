@@ -11,6 +11,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../main.dart';
 import 'Notification/push_token_service.dart';
 import 'mainshell.dart';
+import 'maintenance.dart';
 
 class Login extends StatefulWidget {
   const Login({super.key});
@@ -252,10 +253,10 @@ class _LoginState extends State<Login> {
                               ),
                               // Add border to the input box
                               enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: const BorderSide(
-                                    color: Colors.grey
-                                )
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: const BorderSide(
+                                      color: Colors.grey
+                                  )
                               ),
                               focusedBorder: OutlineInputBorder(  // Change color of the border when clicked
                                 borderRadius: BorderRadius.circular(10),
@@ -284,17 +285,20 @@ class _LoginState extends State<Login> {
                             },
                           ),
                         ),
-                        Container(
-                          margin: EdgeInsets.fromLTRB(165,0,0,0),
-                          child: InkWell(
-                            onTap: () {
-                              Navigator.pushNamed(context, '/forgot_password');
-                            },
-                            child: Text(
-                              'Forgot Password?',
-                              style: TextStyle(
-                                color: Colors.black,
-                                fontSize: 12,
+                        SizedBox(
+                          width: 300,
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: InkWell(
+                              onTap: () {
+                                Navigator.pushNamed(context, '/forgot_password');
+                              },
+                              child: const Text(
+                                'Forgot Password?',
+                                style: TextStyle(
+                                  color: Colors.black,
+                                  fontSize: 12,
+                                ),
                               ),
                             ),
                           ),
@@ -364,7 +368,7 @@ class _LoginState extends State<Login> {
                             final token = await FirebaseMessaging.instance.getToken();
                             print('FCM token: $token');
 
-                            // To check if the account is for student
+                            // To check if the account is for professor
                             final profRow = await supabase
                                 .from('professors')
                                 .select('id, email, terms_conditions, two_fa_enabled, push_enabled, status, archived')
@@ -500,6 +504,25 @@ class _LoginState extends State<Login> {
                               await svc.replaceTokenForUser(professorId: uid); // ✅ delete old then add new
                             } else {
                               await svc.removeAllForUser(professorId: uid);    // ✅ cleanup tokens
+                            }
+
+                            try {
+                              final maintenanceRow = await supabase
+                                  .from('system_settings')
+                                  .select('is_active')
+                                  .eq('id', 'maintenance_mode')
+                                  .maybeSingle();
+
+                              if (maintenanceRow != null && maintenanceRow['is_active'] == true) {
+                                if (!mounted) return;
+                                Navigator.of(context).pushAndRemoveUntil(
+                                  MaterialPageRoute(builder: (_) => const MaintenanceGuard()),
+                                      (route) => false,
+                                );
+                                return;
+                              }
+                            } catch (e) {
+                              debugPrint("Maintenance check error: $e");
                             }
 
                             Navigator.of(context).pushNamedAndRemoveUntil('/mainshell', (r) => false);

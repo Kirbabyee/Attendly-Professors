@@ -2,9 +2,8 @@ import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
-import 'package:professor/Professor%20Page/device_registration.dart';
-import 'package:professor/Professor%20Page/wifi_guard.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'maintenance.dart';
 import 'professor_session.dart';
 
 import '../main.dart'; // LandingPage
@@ -142,6 +141,25 @@ class _AuthGateState extends State<AuthGate> with SingleTickerProviderStateMixin
         return;
       }
 
+      try {
+        final maintenanceRow = await supabase
+            .from('system_settings')
+            .select('is_active')
+            .eq('id', 'maintenance_mode')
+            .maybeSingle();
+
+        if (maintenanceRow != null && maintenanceRow['is_active'] == true) {
+          if (!mounted) return;
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const MaintenanceGuard()),
+                (route) => false,
+          );
+          return; // Stop further routing
+        }
+      } catch (e) {
+        debugPrint("Error checking maintenance status: $e");
+      }
+
       // ✅ 2. Offline Check
       final okNet = await _hasInternet();
       if (!okNet) {
@@ -152,8 +170,6 @@ class _AuthGateState extends State<AuthGate> with SingleTickerProviderStateMixin
 
       int terms = 0;
       bool twoFA = false;
-      String location = "NULL";
-      String? macAddress; // Idagdag ito para sa hardware check
       String emailToUse = session.user.email?.trim().toLowerCase() ?? "";
 
       Map<String, dynamic>? row;
@@ -161,8 +177,7 @@ class _AuthGateState extends State<AuthGate> with SingleTickerProviderStateMixin
         row = await _timeout(
           supabase
               .from('professors')
-          // ✅ Sinama natin ang 'location' sa select
-              .select('terms_conditions, two_fa_enabled, email, status, archived, location, mac_address')
+              .select('terms_conditions, two_fa_enabled, email, status, archived')
               .eq('id', session.user.id)
               .maybeSingle(),
         );
@@ -177,10 +192,6 @@ class _AuthGateState extends State<AuthGate> with SingleTickerProviderStateMixin
           );
           return;
         }
-
-        // Kunin ang current location
-        location = (row['location'] ?? "NULL").toString().toUpperCase();
-        macAddress = row['mac_address']; // Kunin ang mac_address
 
         final rawTerms = row['terms_conditions'];
         terms = (rawTerms is num) ? rawTerms.toInt() : int.tryParse('$rawTerms') ?? 0;
@@ -246,33 +257,13 @@ class _AuthGateState extends State<AuthGate> with SingleTickerProviderStateMixin
         }
       }
 
-      if (macAddress == null || macAddress.isEmpty) {
-        if (!mounted) return;
-        Navigator.of(context).pushAndRemoveUntil(
-          // Palitan ang '/add_device' kung iba ang route name mo
-          MaterialPageRoute(builder: (_) => const DeviceRegistration()),
-              (route) => false,
-        );
-        return;
-      }
-
       // ✅ passed checks → mainshell
       if (!mounted) return;
 
-      // ✅ 5. Location-Based Routing (Same as Student)
-      if (location == "GATE") {
-        Navigator.of(context).pushAndRemoveUntil(
-          // Gamitin ang parehong WifiGuard page na ginawa natin
-          MaterialPageRoute(builder: (_) => const WifiGuard()),
-              (route) => false,
-        );
-      } else {
-        // Kapag CLASSROOM o NULL (default), pasok sa Mainshell
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const Mainshell()),
-              (route) => false,
-        );
-      }
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const Mainshell()),
+            (route) => false,
+      );
 
     } finally {
       _routing = false;

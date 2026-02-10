@@ -5,7 +5,6 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
 
 import 'package:professor/Professor%20Page/Help/help.dart';
-import 'package:professor/Professor%20Page/wifi_guard.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../widgets/navbar.dart';
@@ -13,6 +12,8 @@ import 'Dashboard/notification_ui.dart';
 import 'Settings/settings.dart';
 import 'Dashboard/dashboard.dart';
 import 'History/history.dart';
+import 'maintenance.dart';
+import 'professor_session.dart';
 
 class Mainshell extends StatefulWidget {
   final int initialIndex;
@@ -33,7 +34,8 @@ class _MainshellState extends State<Mainshell> {
   bool _unRead = true;
 
   final supabase = Supabase.instance.client;
-  RealtimeChannel? _locationSub;
+  RealtimeChannel? _maintenanceSub;
+  RealtimeChannel? _profGuardSub;
 
   late final List<Widget> _pages;
 
@@ -57,35 +59,110 @@ class _MainshellState extends State<Mainshell> {
     ];
 
     _startInternetWatcher();
-    _startLocationWatcher();
+    _startMaintenanceWatcher();
+    _startProfessorGuard();
   }
 
-  void _startLocationWatcher() {
+  void _startProfessorGuard() {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) return;
 
-    _locationSub = supabase
-        .channel('public:professors_check') // Identifier
+    _profGuardSub = supabase
+        .channel('public:prof_guard')
         .onPostgresChanges(
       event: PostgresChangeEvent.update,
       schema: 'public',
-      table: 'professors', // Dapat tumugma sa table sa DB
+      table: 'professors',
       filter: PostgresChangeFilter(
         type: PostgresChangeFilterType.eq,
         column: 'id',
         value: userId,
       ),
       callback: (payload) {
-        final newLocation = payload.newRecord['location']?.toString().toUpperCase();
+        final bool isArchived = payload.newRecord['archived'] ?? false;
+        final String status = (payload.newRecord['status'] ?? '').toString().toLowerCase();
 
-        // ✅ Kapag lumabas ng classroom, automatic redirect sa WifiGuard
-        if (newLocation == 'GATE' || newLocation == 'NULL') {
-          if (mounted) {
-            Navigator.of(context).pushAndRemoveUntil(
-              MaterialPageRoute(builder: (_) => const WifiGuard()),
-                  (route) => false,
-            );
-          }
+        if (isArchived || status == 'inactive') {
+          _showSessionExpiredDialogAndLogout();
+        }
+      },
+    )
+        .subscribe();
+  }
+
+  Future<void> _showSessionExpiredDialogAndLogout() async {
+    if (!mounted || ModalRoute.of(context)?.isCurrent != true) {
+      return;
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 50),
+          title: const Row(
+            children: [
+              Icon(Icons.error_outline, color: Colors.red),
+              SizedBox(width: 10),
+              Text("Session Expired", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: const Text(
+            "Your account status has been changed or deactivated. You will be logged out for security.",
+            style: TextStyle(fontSize: 14),
+          ),
+          actionsPadding: const EdgeInsets.fromLTRB(15, 0, 15, 15),
+          actions: <Widget>[
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF004280),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  elevation: 0,
+                ),
+                child: const Text("OK"),
+                onPressed: () async {
+                  Navigator.of(dialogContext).pop();
+                  await supabase.auth.signOut();
+                  ProfessorSession.clear();
+                  if (mounted) {
+                    Navigator.of(context)
+                        .pushNamedAndRemoveUntil('/login', (r) => false);
+                  }
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _startMaintenanceWatcher() {
+    _maintenanceSub = supabase
+        .channel('public:system_check')
+        .onPostgresChanges(
+      event: PostgresChangeEvent.update,
+      schema: 'public',
+      table: 'system_settings',
+      filter: PostgresChangeFilter(
+        type: PostgresChangeFilterType.eq,
+        column: 'id',
+        value: 'maintenance_mode',
+      ),
+      callback: (payload) {
+        final bool isUnderMaintenance = payload.newRecord['is_active'] ?? false;
+        if (isUnderMaintenance && mounted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const MaintenanceGuard()),
+                (route) => false,
+          );
         }
       },
     )
@@ -117,7 +194,8 @@ class _MainshellState extends State<Mainshell> {
   @override
   void dispose() {
     _connSub?.cancel();
-    _locationSub?.unsubscribe();
+    _maintenanceSub?.unsubscribe();
+    _profGuardSub?.unsubscribe();
     super.dispose();
   }
 

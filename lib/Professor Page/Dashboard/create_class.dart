@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../professor_session.dart';
 import 'class_item.dart';
 
 class CreateClassSheet extends StatefulWidget {
@@ -14,7 +15,99 @@ class CreateClassSheet extends StatefulWidget {
 }
 
 class _CreateClassSheetState extends State<CreateClassSheet> {
+  List<Map<String, dynamic>> _wifiList = []; // Listahan ng lahat ng wifi sa campus
+  String _autoWifiSSID = 'No WiFi found for this room'; // Display lang
+
+  List<Map<String, dynamic>> _roomSchedules = []; // Schedules taken in this room
+  bool _loadingSchedules = false;
+
+  List<Map<String, dynamic>> _availableSubjects = []; // Subjects for dropdown
+  bool _loadingSubjects = false;
+
   final supabase = Supabase.instance.client;
+
+  Future<void> _loadCampusWifi() async {
+    try {
+      final data = await supabase.from('campus_networks').select('ssid, room_name');
+      if (!mounted) return;
+      setState(() {
+        _wifiList = List<Map<String, dynamic>>.from(data);
+      });
+      if (_room.text.isNotEmpty) {
+        _updateAutoWifi(_room.text);
+        _fetchRoomSchedules(_room.text);
+      }
+    } catch (e) {
+      debugPrint('Error loading wifi: $e');
+    }
+  }
+
+  Future<void> _loadSubjects() async {
+    if (!mounted) return;
+    setState(() => _loadingSubjects = true);
+    try {
+      final prof = await ProfessorSession.get();
+      final department = prof?['department'];
+
+      var query = supabase.from('subjects').select('course_code, course_name');
+      if (department != null && department.toString().isNotEmpty) {
+        query = query.eq('department', department);
+      }
+
+      final data = await query.order('course_name');
+      if (!mounted) return;
+      setState(() {
+        _availableSubjects = List<Map<String, dynamic>>.from(data);
+        _loadingSubjects = false;
+      });
+    } catch (e) {
+      debugPrint('Error loading subjects: $e');
+      if (mounted) setState(() => _loadingSubjects = false);
+    }
+  }
+
+  void _updateAutoWifi(String roomValue) {
+    setState(() {
+      if (roomValue.trim().isEmpty) {
+        _autoWifiSSID = 'No room entered';
+      } else {
+        _autoWifiSSID = 'AP${roomValue.trim().toUpperCase()}';
+      }
+    });
+  }
+
+  Future<void> _fetchRoomSchedules(String roomNum) async {
+    final roomVal = roomNum.trim();
+    if (roomVal.isEmpty) {
+      setState(() => _roomSchedules = []);
+      return;
+    }
+
+    setState(() => _loadingSchedules = true);
+
+    try {
+      final roomStr = 'Room $roomVal';
+      var query = supabase
+          .from('classes')
+          .select('day_of_week, start_time, end_time, course, professor_id')
+          .eq('room', roomStr)
+          .eq('archived', false);
+
+      if (isEdit) {
+        query = query.neq('id', widget.initialItem!.id);
+      }
+
+      final res = await query;
+      if (!mounted) return;
+      setState(() {
+        _roomSchedules = List<Map<String, dynamic>>.from(res);
+        _loadingSchedules = false;
+      });
+    } catch (e) {
+      debugPrint('Error fetching room schedules: $e');
+      if (mounted) setState(() => _loadingSchedules = false);
+    }
+  }
 
   Future<bool> _confirmSave({required bool isEdit}) async {
     final result = await showDialog<bool>(
@@ -60,17 +153,13 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
     final endMin = _to24hMinutes(_endHour, _endMinute, _endIsAm);
 
     var diff = endMin - startMin;
-
-    // ✅ overnight -> add 24h
     if (diff <= 0) diff += 24 * 60;
-
     return diff;
   }
 
   String _formatDurationPretty(int minutes) {
     final h = minutes ~/ 60;
     final m = minutes % 60;
-
     if (m == 0) return '${h}hr';
     return '${h}hr ${m}min';
   }
@@ -110,12 +199,24 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
     return result ?? false;
   }
 
+  late final bool isEdit = widget.initialItem != null;
 
-  bool _saving = false;
-  String? _saveError;
+  bool _hasChanges() {
+    if (!isEdit) return true;
+
+    final item = widget.initialItem!;
+    final currentYearSection = '${_selectedProgram?.toUpperCase()} ${_selectedYear}-${_selectedSection?.toUpperCase()}';
+    final currentRoom = 'Room ${_room.text.trim()}';
+    final currentSchedule = '$_selectedDay: ${_formatTime(_startHour, _startMinute, _startIsAm)} - ${_formatTime(_endHour, _endMinute, _endIsAm)}';
+
+    return _className.text.trim() != item.course ||
+        _courseCode.text.trim().toUpperCase() != item.courseCode ||
+        currentYearSection != item.yearSection ||
+        currentRoom != item.room ||
+        currentSchedule != item.sched;
+  }
 
   (int, int, bool) _parseTime(String time) {
-    // "9:00 AM"
     final reg = RegExp(r'^(\d{1,2}):(\d{2})\s*(AM|PM)$', caseSensitive: false);
     final m = reg.firstMatch(time.trim());
     if (m == null) return (12, 0, true);
@@ -127,19 +228,14 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
     return (hour, minute, am);
   }
 
-  // ===== Class Code Generator (Google Classroom-like) =====
-
-  // characters: avoid confusing ones (O/0, I/1)
   static const _alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
   String _randomCode({int len = 7}) {
     final now = DateTime.now().microsecondsSinceEpoch;
-    // simple pseudo-random using time seed (enough for app-level codes)
-    // If you want true crypto-random, we can use Random.secure() too.
     var x = now;
     final b = StringBuffer();
     for (var i = 0; i < len; i++) {
-      x = (x * 1103515245 + 12345) & 0x7fffffff; // LCG
+      x = (x * 1103515245 + 12345) & 0x7fffffff;
       final idx = x % _alphabet.length;
       b.write(_alphabet[idx]);
     }
@@ -157,13 +253,11 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
   }
 
   Future<String> _generateUniqueClassCode() async {
-    // retry a few times in case may collision
     for (var attempt = 0; attempt < 10; attempt++) {
       final code = _randomCode(len: 7);
       final exists = await _classCodeExists(code);
       if (!exists) return code;
     }
-    // fallback: longer code
     for (var attempt = 0; attempt < 10; attempt++) {
       final code = _randomCode(len: 9);
       final exists = await _classCodeExists(code);
@@ -173,24 +267,26 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
   }
 
   Future<void> _ensureAutoClassCode() async {
-    // only generate if CREATE mode and empty pa
-    if (widget.initialItem != null) return;
-    if (_classCode.text.trim().isNotEmpty) return;
-
+    if (isEdit || _classCode.text.isNotEmpty) return;
     try {
       final code = await _generateUniqueClassCode();
       if (!mounted) return;
       setState(() {
-        _classCode.text = code; // ✅ auto-fill class_code (join code)
+        _classCode.text = code;
       });
-    } catch (_) {
-      // optional: ignore, user can type manually
-    }
+    } catch (_) {}
   }
 
   @override
   void initState() {
     super.initState();
+    _loadCampusWifi(); 
+    _loadSubjects(); 
+
+    _room.addListener(() {
+      _updateAutoWifi(_room.text);
+      _fetchRoomSchedules(_room.text);
+    });
 
     final item = widget.initialItem;
     if (item != null) {
@@ -208,24 +304,14 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
       final endStr = timePart.split('-').last.trim();
 
       final start = _parseTime(startStr);
-      _startHour = start.$1;
-      _startMinute = start.$2;
-      _startIsAm = start.$3;
+      _startHour = start.$1; _startMinute = start.$2; _startIsAm = start.$3;
 
       final end = _parseTime(endStr);
-      _endHour = end.$1;
-      _endMinute = end.$2;
-      _endIsAm = end.$3;
+      _endHour = end.$1; _endMinute = end.$2; _endIsAm = end.$3;
 
-      // ✅ DITO MO ILALAGAY (PARSE YEAR_SECTION)
-      final raw = item.yearSection ?? ''; // dapat galing DB
-
-      final text = raw.trim();
-      if (text.isNotEmpty) {
-        final m = RegExp(
-          r'^(\w+)\s+(\d)\s*[- ]\s*([A-Z])$',
-        ).firstMatch(text.toUpperCase());
-
+      final raw = item.yearSection ?? ''; 
+      if (raw.isNotEmpty) {
+        final m = RegExp(r'^(\w+)\s+(\d)\s*[- ]\s*([A-Z])$').firstMatch(raw.toUpperCase());
         if (m != null) {
           _selectedProgram = m.group(1);
           _selectedYear = m.group(2);
@@ -233,194 +319,167 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
         }
       }
     }
-    // auto-generate code for create mode
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _ensureAutoClassCode();
-    });
-
+    WidgetsBinding.instance.addPostFrameCallback((_) => _ensureAutoClassCode());
   }
 
   final List<String> _days = const [
     'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
   ];
 
-  final List<Map<String, String>> _programs = const [
-    {'code': 'BSIT',  'label': 'Bachelor of Science in Information Technology'},
-    {'code': 'BSCS',  'label': 'Bachelor of Science in Computer Science'},
-    {'code': 'BSIS',  'label': 'Bachelor of Science in Information System'},
-    {'code': 'BSEMC', 'label': 'Bachelor of Science in Entertainment and Multimedia Computing'},
-  ];
-
+  final List<String> _programs = const ['BSIT', 'BSCS', 'BSIS', 'BSEMC'];
   final List<String> _years = const ['1', '2', '3', '4'];
   final List<String> _sections = const ['A', 'B', 'C', 'D'];
 
-  String? _selectedProgram;
-  String? _selectedYear;
-  String? _selectedSection;
-
-  String? _selectedDay;
-
+  String? _selectedProgram, _selectedYear, _selectedSection, _selectedDay;
   final _formKey = GlobalKey<FormState>();
 
   final _className = TextEditingController();
-  final _courseCode = TextEditingController(); // manual: IT108 / CCS101 etc
-  final _classCode = TextEditingController();  // auto: join code like GClass
+  final _courseCode = TextEditingController();
+  final _classCode = TextEditingController();
   final _room = TextEditingController();
 
-
-  int _startHour = 12, _startMinute = 0;
-  bool _startIsAm = true;
-
-  int _endHour = 3, _endMinute = 0;
-  bool _endIsAm = true;
+  int _startHour = 12, _startMinute = 0, _endHour = 3, _endMinute = 0;
+  bool _startIsAm = true, _endIsAm = true, _saving = false;
 
   @override
   void dispose() {
-    _className.dispose();
-    _courseCode.dispose();
-    _room.dispose();
-    _classCode.dispose();
+    _className.dispose(); _courseCode.dispose(); _room.dispose(); _classCode.dispose();
     super.dispose();
   }
 
-  InputDecoration _input(String hint) {
-    return InputDecoration(
-      hintText: hint,
-      filled: true,
-      fillColor: const Color(0xFFEAEAEA),
-      errorMaxLines: 1,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: BorderSide.none,
+  InputDecoration _input(String hint, {double hintSize = 12}) => InputDecoration(
+    hintText: hint, 
+    filled: true, 
+    fillColor: const Color(0xFFEAEAEA),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+    isDense: true, 
+    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+    hintStyle: TextStyle(fontSize: hintSize), 
+    errorStyle: const TextStyle(fontSize: 10),
+  );
+
+  Widget _label(String text) => Padding(
+    padding: const EdgeInsets.only(bottom: 8, top: 4),
+    child: Row(children: [Text(text, style: const TextStyle(fontSize: 12)), const SizedBox(width: 4), const Text('*', style: TextStyle(color: Colors.red))]),
+  );
+
+  Widget _timeRow({required String label, required int hour, required int minute, required bool isAm, required Function(int, int, bool) onUpdate}) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      _label(label),
+      GestureDetector(
+        onTap: () => _showCustomTimePicker(context: context, initialHour: hour, initialMinute: minute, initialIsAm: isAm, onConfirm: onUpdate),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(color: const Color(0xFFEAEAEA), borderRadius: BorderRadius.circular(8)),
+          child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            Text(_formatTime(hour, minute, isAm), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+            const Icon(Icons.access_time_rounded, size: 18, color: Colors.grey),
+          ]),
+        ),
       ),
-      helperText: ' ',
-      helperStyle: const TextStyle(fontSize: 12),
-      errorStyle: const TextStyle(fontSize: 10),
-    );
+    ],
+  );
+
+  String _formatTime(int h, int m, bool am) => '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')} ${am ? "AM" : "PM"}';
+
+  String _convert24To12(String time) {
+    if (time.isEmpty || time.toUpperCase().contains('AM') || time.toUpperCase().contains('PM')) return time;
+    final parts = time.split(':');
+    if (parts.length < 2) return time;
+    int? h = int.tryParse(parts[0]), m = int.tryParse(parts[1]);
+    if (h == null || m == null) return time;
+    return _formatTime(h % 12 == 0 ? 12 : h % 12, m, h < 12);
   }
 
-  Widget _label(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          Text(text, style: const TextStyle(fontSize: 12)),
-          const SizedBox(width: 4),
-          const Text('*', style: TextStyle(color: Colors.red)),
+  Future<List<String>> _checkRoomConflicts() async {
+    final day = _selectedDay;
+    final roomVal = _room.text.trim();
+    if (day == null || roomVal.isEmpty) return [];
+
+    final startMin = _to24hMinutes(_startHour, _startMinute, _startIsAm);
+    int endMin = _to24hMinutes(_endHour, _endMinute, _endIsAm);
+    if (endMin <= startMin) endMin += 1440;
+
+    final roomStr = 'Room $roomVal';
+    var query = supabase.from('classes')
+        .select('course, start_time, end_time, room')
+        .eq('room', roomStr)
+        .eq('day_of_week', day)
+        .eq('archived', false);
+
+    if (isEdit) query = query.neq('id', widget.initialItem!.id);
+
+    final res = await query;
+    final existing = List<Map<String, dynamic>>.from(res);
+    List<String> conflicts = [];
+
+    for (final cls in existing) {
+      final eStartStr = cls['start_time']?.toString() ?? '';
+      final eEndStr = cls['end_time']?.toString() ?? '';
+      if (eStartStr.isEmpty || eEndStr.isEmpty) continue;
+
+      final eStartParts = _parseTime(eStartStr);
+      final eEndParts = _parseTime(eEndStr);
+
+      final eStartMin = _to24hMinutes(eStartParts.$1, eStartParts.$2, eStartParts.$3);
+      int eEndMin = _to24hMinutes(eEndParts.$1, eEndParts.$2, eEndParts.$3);
+      if (eEndMin <= eStartMin) eEndMin += 1440;
+
+      if (startMin < eEndMin && endMin > eStartMin) {
+        final fmtStart = _convert24To12(eStartStr);
+        final fmtEnd = _convert24To12(eEndStr);
+        conflicts.add('${cls['course']} ($fmtStart - $fmtEnd)');
+      }
+    }
+    return conflicts;
+  }
+
+  void _showConflictModal(List<String> conflicts) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.red),
+            SizedBox(width: 10),
+            Text("Schedule Conflict", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("This room is already occupied during this time:", style: TextStyle(fontSize: 14)),
+            const SizedBox(height: 12),
+            ...conflicts.map((c) => Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text("• $c", style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.red)),
+            )),
+          ],
+        ),
+        actions: [
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF004280),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              onPressed: () => Navigator.pop(context),
+              child: const Text("OK", style: TextStyle(color: Colors.white)),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _timeRow({
-    required int hour,
-    required int minute,
-    required bool isAm,
-    required ValueChanged<int> onHour,
-    required ValueChanged<int> onMinute,
-    required ValueChanged<bool> onAmPm,
-  }) {
-    Widget box({required String text, double w = 58}) {
-      return Container(
-        width: w,
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          color: const Color(0xFFEAEAEA),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          text,
-          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w500),
-        ),
-      );
-    }
-
-    return Row(
-      children: [
-        GestureDetector(
-          onTap: () async {
-            final picked = await _pickNumber(
-              context,
-              title: 'Hour',
-              initial: hour,
-              min: 1,
-              max: 12,
-            );
-            if (picked != null) onHour(picked);
-          },
-          child: box(text: hour.toString().padLeft(2, '0')),
-        ),
-        const SizedBox(width: 8),
-        const Text(':', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
-        const SizedBox(width: 8),
-        GestureDetector(
-          onTap: () async {
-            final picked = await _pickNumber(
-              context,
-              title: 'Minute',
-              initial: minute,
-              min: 0,
-              max: 59,
-            );
-            if (picked != null) onMinute(picked);
-          },
-          child: box(text: minute.toString().padLeft(2, '0')),
-        ),
-        const SizedBox(width: 10),
-        Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.black26),
-            color: Colors.white,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _ampmButton('AM', isSelected: isAm, onTap: () => onAmPm(true)),
-              _ampmButton('PM', isSelected: !isAm, onTap: () => onAmPm(false)),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _ampmButton(String label, {required bool isSelected, required VoidCallback onTap}) {
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        width: 52,
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF004280) : Colors.transparent,
-          borderRadius: label == 'AM'
-              ? const BorderRadius.vertical(top: Radius.circular(10))
-              : const BorderRadius.vertical(bottom: Radius.circular(10)),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: isSelected ? Colors.white : Colors.black87,
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _formatTime(int h, int m, bool am) {
-    final hh = h.toString().padLeft(2, '0');
-    final mm = m.toString().padLeft(2, '0');
-    return '$hh:$mm ${am ? "AM" : "PM"}';
-  }
-
   @override
   Widget build(BuildContext context) {
-    final isEdit = widget.initialItem != null;
     final bottom = MediaQuery.of(context).viewInsets.bottom;
 
     return SafeArea(
@@ -430,343 +489,176 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
         child: Container(
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 50),
           padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(8),
-          ),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
           child: SingleChildScrollView(
             child: Form(
               key: _formKey,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Container(
-                        child: Row(
-                          children: [
-                            Icon(Icons.book_outlined, size: 20),
-                            SizedBox(width: 10),
-                            Text(
-                              'Create Class',
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                            ),
-                          ],
-                        ),
-                      ),
-                      InkWell(
-                        onTap: () {
-                          Navigator.pop(context);
-                        },
-                        child: Icon(CupertinoIcons.xmark),
-                      )
-                    ],
-                  ),
+                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                    Row(children: [const Icon(Icons.book_outlined, size: 20), const SizedBox(width: 10), Text(isEdit ? 'Edit Class' : 'Create Class', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700))]),
+                    InkWell(onTap: () => Navigator.pop(context), child: const Icon(CupertinoIcons.xmark))
+                  ]),
                   const SizedBox(height: 18),
 
                   _label('Course Name'),
-                  TextFormField(
-                    controller: _className,
-                    style: const TextStyle(fontSize: 12),
-                    decoration: _input('Enter Course Name'),
-                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
-                  ),
+                  _loadingSubjects 
+                    ? const Center(child: CupertinoActivityIndicator(radius: 8))
+                    : DropdownButtonFormField<String>(
+                        value: _availableSubjects.any((s) => s['course_name'] == _className.text) ? _className.text : null,
+                        isExpanded: true,
+                        isDense: true, 
+                        style: const TextStyle(fontSize: 12, color: Colors.black),
+                        decoration: _input('Select Course Name'),
+                        dropdownColor: Colors.white,
+                        items: _availableSubjects.map((s) => DropdownMenuItem<String>(value: s['course_name'].toString(), child: Text(s['course_name'].toString(), style: const TextStyle(fontSize: 12)))).toList(),
+                        onChanged: (v) { if (v != null) setState(() { _className.text = v; final sub = _availableSubjects.firstWhere((s) => s['course_name'] == v); _courseCode.text = sub['course_code'] ?? ''; }); },
+                        validator: (v) => (_className.text.isEmpty) ? 'Required' : null,
+                      ),
                   const SizedBox(height: 8),
 
                   _label('Course Code'),
-                  TextFormField(
-                    controller: _courseCode,
-                    style: const TextStyle(fontSize: 12),
-                    decoration: _input('Enter Class Code'),
-                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
-                  ),
+                  TextFormField(controller: _courseCode, readOnly: true, style: const TextStyle(fontSize: 12), decoration: _input('Course code will auto-fill'), validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null),
                   const SizedBox(height: 8),
 
                   _label('Program'),
                   DropdownButtonFormField<String>(
-                    value: _selectedProgram,
-                    isExpanded: true,
-
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.black,
-                    ),
-
-                    decoration: InputDecoration(
-                      hintText: 'Select Program',
-                      filled: true,
-                      fillColor: const Color(0xFFEAEAEA),
-                      isDense: true, // ✅ mas maliit height
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide.none,
-                      ),
-                      hintStyle: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.black54,
-                      ),
-                      helperText: ' ',
-                      helperStyle: const TextStyle(fontSize: 12),
-                      errorStyle: const TextStyle(fontSize: 10),
-                    ),
-
-                    dropdownColor: Colors.white,
-
-                    selectedItemBuilder: (context) {
-                      return _programs.map((p) {
-                        return Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            p['code']!,
-                            style: const TextStyle(fontSize: 12),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        );
-                      }).toList();
-                    },
-
-                    items: _programs.map((p) {
-                      return DropdownMenuItem<String>(
-                        value: p['code'],
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              p['code']!,
-                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                            ),
-                            Text(
-                              p['label']!,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 11),
-                            ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
-
-                    onChanged: (v) => setState(() => _selectedProgram = v),
-                    validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+                    value: _selectedProgram, 
+                    isExpanded: true, 
+                    isDense: true, 
+                    style: const TextStyle(fontSize: 12, color: Colors.black), 
+                    decoration: _input('Select Program'), 
+                    dropdownColor: Colors.white, 
+                    items: _programs.map((p) => DropdownMenuItem<String>(value: p, child: Text(p, style: const TextStyle(fontSize: 12)))).toList(), 
+                    onChanged: (v) => setState(() => _selectedProgram = v), 
+                    validator: (v) => (v == null || v.isEmpty) ? 'Required' : null
                   ),
                   const SizedBox(height: 8),
 
-                  _label('Year'),
-                  DropdownButtonFormField<String>(
-                    value: _selectedYear,
-                    style: const TextStyle(fontSize: 12, color: Colors.black),
-                    decoration: _input('Select Year'),
-                    dropdownColor: Colors.white,
-                    items: _years.map((y) => DropdownMenuItem(value: y, child: Text(y))).toList(),
-                    onChanged: (v) => setState(() => _selectedYear = v),
-                    validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
-                  ),
-                  const SizedBox(height: 8),
-
-                  _label('Section'),
-                  DropdownButtonFormField<String>(
-                    value: _selectedSection,
-                    style: const TextStyle(fontSize: 12, color: Colors.black),
-                    decoration: _input('Select Section'),
-                    dropdownColor: Colors.white,
-                    items: _sections.map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
-                    onChanged: (v) => setState(() => _selectedSection = v),
-                    validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
-                  ),
-                  const SizedBox(height: 8),
+                  Row(children: [
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [_label('Year'), DropdownButtonFormField<String>(value: _selectedYear, isDense: true, style: const TextStyle(fontSize: 12, color: Colors.black), decoration: _input('Year', hintSize: 10), dropdownColor: Colors.white, items: _years.map((y) => DropdownMenuItem(value: y, child: Text(y, style: const TextStyle(fontSize: 12)))).toList(), onChanged: (v) => setState(() => _selectedYear = v), validator: (v) => (v == null || v.isEmpty) ? 'Required' : null)])),
+                    const SizedBox(width: 12),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [_label('Section'), DropdownButtonFormField<String>(value: _selectedSection, isDense: true, style: const TextStyle(fontSize: 12, color: Colors.black), decoration: _input('Section', hintSize: 10), dropdownColor: Colors.white, items: _sections.map((s) => DropdownMenuItem(value: s, child: Text(s, style: const TextStyle(fontSize: 12)))).toList(), onChanged: (v) => setState(() => _selectedSection = v), validator: (v) => (v == null || v.isEmpty) ? 'Required' : null)])),
+                  ]),
 
                   _label('Room'),
-                  TextFormField(
-                    controller: _room,
-                    style: const TextStyle(fontSize: 12),
-                    decoration: _input('Enter Room Number'),
-                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+                  TextFormField(controller: _room, style: const TextStyle(fontSize: 12), decoration: _input('e.g. 302'), validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null),
+                  const SizedBox(height: 18),
+
+                  _label('Assigned Room WiFi'),
+                  Container(
+                    width: double.infinity, padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(color: const Color(0xFFDCDCDC), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade400)),
+                    child: Row(children: [const Icon(Icons.wifi, size: 18, color: Color(0xFF004280)), const SizedBox(width: 10), Expanded(child: Text(_autoWifiSSID, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black87)))]),
                   ),
                   const SizedBox(height: 18),
 
+                  if (_room.text.trim().isNotEmpty) ...[
+                    Row(children: [const Icon(Icons.calendar_today_outlined, size: 14, color: Colors.grey), const SizedBox(width: 6), Text('Schedules in Room ${_room.text.trim()}:', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey))]),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: double.infinity, padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF9FAFB), 
+                        borderRadius: BorderRadius.circular(8), 
+                        border: Border.all(color: const Color(0xFFE5E7EB)),
+                      ),
+                      child: _loadingSchedules ? const Center(child: CupertinoActivityIndicator(radius: 8)) : _roomSchedules.isEmpty ? const Text('No other classes found for this room.', style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: Colors.black54)) : Column(crossAxisAlignment: CrossAxisAlignment.start, children: _roomSchedules.map((s) {
+                        final start = _convert24To12(s['start_time']?.toString() ?? '');
+                        final end = _convert24To12(s['end_time']?.toString() ?? '');
+                        return Padding(padding: const EdgeInsets.only(bottom: 4), child: Text('• ${s['day_of_week']}: $start - $end (${s['course']})', style: const TextStyle(fontSize: 11, color: Colors.black87)));
+                      }).toList()),
+                    ),
+                    const SizedBox(height: 18),
+                  ],
+
                   _label('Day'),
-                  DropdownButtonFormField<String>(
-                    value: _selectedDay,
-                    style: const TextStyle(fontSize: 12, color: Colors.black),
-                    decoration: _input('Select Day'),
-                    dropdownColor: Colors.white,
-                    items: _days.map((d) => DropdownMenuItem(value: d, child: Text(d))).toList(),
-                    onChanged: (v) => setState(() => _selectedDay = v),
-                    validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
-                  ),
+                  DropdownButtonFormField<String>(value: _selectedDay, isDense: true, style: const TextStyle(fontSize: 12, color: Colors.black), decoration: _input('Select Day'), dropdownColor: Colors.white, items: _days.map((d) => DropdownMenuItem(value: d, child: Text(d, style: const TextStyle(fontSize: 12)))).toList(), onChanged: (v) => setState(() => _selectedDay = v), validator: (v) => (v == null || v.isEmpty) ? 'Required' : null),
                   const SizedBox(height: 8),
 
-                  _label('Time Start'),
-                  _timeRow(
-                    hour: _startHour,
-                    minute: _startMinute,
-                    isAm: _startIsAm,
-                    onHour: (v) => setState(() => _startHour = v),
-                    onMinute: (v) => setState(() => _startMinute = v),
-                    onAmPm: (v) => setState(() => _startIsAm = v),
-                  ),
+                  _timeRow(label: 'Time Start', hour: _startHour, minute: _startMinute, isAm: _startIsAm, onUpdate: (h, m, am) => setState(() { _startHour = h; _startMinute = m; _startIsAm = am; })),
                   const SizedBox(height: 16),
-
-                  _label('Time End'),
-                  _timeRow(
-                    hour: _endHour,
-                    minute: _endMinute,
-                    isAm: _endIsAm,
-                    onHour: (v) => setState(() => _endHour = v),
-                    onMinute: (v) => setState(() => _endMinute = v),
-                    onAmPm: (v) => setState(() => _endIsAm = v),
-                  ),
+                  _timeRow(label: 'Time End', hour: _endHour, minute: _endMinute, isAm: _endIsAm, onUpdate: (h, m, am) => setState(() { _endHour = h; _endMinute = m; _endIsAm = am; })),
 
                   const SizedBox(height: 22),
 
-                  if (_saveError != null)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: Text(
-                        _saveError!,
-                        style: const TextStyle(color: Colors.red, fontSize: 12),
-                      ),
-                    ),
-
                   Center(
                     child: SizedBox(
-                      width: 180,
-                      height: 44,
+                      width: 180, height: 44,
                       child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF004280),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        onPressed: () async {
+                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF004280), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                        onPressed: (_saving || (isEdit && !_hasChanges())) ? null : () async {
                           if (!_formKey.currentState!.validate()) return;
                           if (_saving) return;
 
-                          final ok = await _confirmSave(isEdit: isEdit);
-                          if (!ok) return;
-
-                          // ✅ compute minutes
-                          final startMin = _to24hMinutes(_startHour, _startMinute, _startIsAm);
-                          final endMin = _to24hMinutes(_endHour, _endMinute, _endIsAm);
-
-                          // ✅ if end earlier than start -> overnight confirmation
-                          if (endMin < startMin) {
-                            final durationMin = _classDurationMinutes();
-                            final pretty = _formatDurationPretty(durationMin);
-
-                            final okOvernight = await _confirmOvernightDuration(
-                              isEdit: isEdit,
-                              prettyDuration: pretty,
-                            );
-
-                            if (!okOvernight) return;
-                          }
-
-                          setState(() {
-                            _saving = true;
-                            _saveError = null;
-                          });
+                          setState(() { _saving = true; });
 
                           try {
+                            // ✅ 1. Room Conflict Check (Modal version)
+                            final conflicts = await _checkRoomConflicts();
+                            if (conflicts.isNotEmpty) {
+                              setState(() => _saving = false);
+                              _showConflictModal(conflicts);
+                              return;
+                            }
+
+                            final ok = await _confirmSave(isEdit: isEdit);
+                            if (!ok) { setState(() => _saving = false); return; }
+
+                            final startMin = _to24hMinutes(_startHour, _startMinute, _startIsAm);
+                            int endMin = _to24hMinutes(_endHour, _endMinute, _endIsAm);
+                            if (endMin < startMin) {
+                              final durationMin = _classDurationMinutes();
+                              final pretty = _formatDurationPretty(durationMin);
+                              final okOvernight = await _confirmOvernightDuration(isEdit: isEdit, prettyDuration: pretty);
+                              if (!okOvernight) { setState(() => _saving = false); return; }
+                            }
+
                             final uid = supabase.auth.currentUser?.id;
                             if (uid == null) throw Exception('Not logged in');
 
                             final courseName = _className.text.trim();
                             final courseCode = _courseCode.text.trim().toUpperCase();
-                            final yearSection =
-                                '${_selectedProgram!.toUpperCase()} ${_selectedYear!}-${_selectedSection!.toUpperCase()}';
+                            final yearSection = '${_selectedProgram!.toUpperCase()} ${_selectedYear!}-${_selectedSection!.toUpperCase()}';
                             final room = 'Room ${_room.text.trim()}';
                             final day = _selectedDay!;
                             final start = _formatTime(_startHour, _startMinute, _startIsAm);
                             final end = _formatTime(_endHour, _endMinute, _endIsAm);
                             final classCode  = _classCode.text.trim().toUpperCase();
-
-                            // ✅ since DB uses single string column "schedule"
+                            final assignedWifi = _autoWifiSSID;
                             final schedule = '$day: $start - $end';
 
                             Map<String, dynamic> row;
-
                             if (isEdit) {
-                              // ✅ UPDATE class
-                              row = await supabase
-                                  .from('classes')
-                                  .update({
-                                'course': courseName,
-                                'course_code': courseCode,
-                                'year_section': yearSection,
-                                'room': room,
-                                'day_of_week': day,
-                                'start_time': start,
-                                'end_time': end,
-                                'schedule': schedule,
-                              })
-                                  .eq('id', widget.initialItem!.id)
-                                  .select()
-                                  .single();
-
-                              // ✅ RESET all sessions under this class
-                              await supabase
-                                  .from('class_sessions')
-                                  .update({
-                                'status': null,
-                              })
-                                  .eq('class_id', widget.initialItem!.id);
+                              row = await supabase.from('classes').update({
+                                'course': courseName, 'course_code': courseCode, 'year_section': yearSection, 'room': room,
+                                'day_of_week': day, 'start_time': start, 'end_time': end, 'schedule': schedule, 'room_ap': assignedWifi,
+                              }).eq('id', widget.initialItem!.id).select().single();
+                              await supabase.from('class_sessions').update({'status': null}).eq('class_id', widget.initialItem!.id);
                             } else {
-                              // ✅ INSERT class
-                              row = await supabase
-                                  .from('classes')
-                                  .insert({
-                                'professor_id': uid,
-                                'course': courseName,
-                                'course_code': courseCode,
-                                'year_section': yearSection,
-                                'room': room,
-                                'day_of_week': day,
-                                'start_time': start,
-                                'end_time': end,
-                                'schedule': schedule,
-                                'class_code': classCode,
-                              })
-                                  .select()
-                                  .single();
+                              row = await supabase.from('classes').insert({
+                                'professor_id': uid, 'course': courseName, 'course_code': courseCode, 'year_section': yearSection,
+                                'room': room, 'day_of_week': day, 'start_time': start, 'end_time': end, 'schedule': schedule,
+                                'class_code': classCode, 'room_ap': assignedWifi,
+                              }).select().single();
                             }
 
                             if (!mounted) return;
-
-                            // ✅ return the saved row (correct keys)
-                            Navigator.pop(
-                              context,
-                              ClassItem(
-                                id: row['id'] as String,
-                                yearSection: row['year_section'] as String, // ✅ HERE
-                                classCode: row['class_code'] as String,
-                                course: row['course'] as String,
-                                courseCode: row['course_code'] as String,
-                                professor: widget.initialItem?.professor ?? 'Professor',
-                                room: row['room'] as String,
-                                sched: row['schedule'] as String,
-                                session: widget.initialItem?.session ?? 'Upcoming',
-                              ),
-                            );
+                            Navigator.pop(context, ClassItem(
+                              id: row['id'] as String, yearSection: row['year_section'] as String, classCode: row['class_code'] as String,
+                              course: row['course'] as String, courseCode: row['course_code'] as String, professor: widget.initialItem?.professor ?? 'Professor',
+                              room: row['room'] as String, sched: row['schedule'] as String, session: widget.initialItem?.session ?? 'Upcoming',
+                            ));
                           } catch (e) {
                             if (!mounted) return;
-                            setState(() => _saveError = e.toString());
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Failed to save class: $e')),
-                            );
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to save class: $e')));
                           } finally {
                             if (!mounted) return;
                             setState(() => _saving = false);
                           }
                         },
-                        child: Text(
-                          _saving ? 'Saving...' : (isEdit ? 'Save Changes' : 'Create'),
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-                        ),
+                        child: Text(_saving ? 'Saving...' : (isEdit ? 'Save Changes' : 'Create'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
                       ),
                     ),
                   ),
@@ -780,49 +672,31 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
   }
 }
 
-/// Simple number picker dialog for hour/minute
-Future<int?> _pickNumber(
-    BuildContext context, {
-      required String title,
-      required int initial,
-      required int min,
-      required int max,
-    }) {
-  int temp = initial;
-
-  return showDialog<int>(
+void _showCustomTimePicker({required BuildContext context, required int initialHour, required int initialMinute, required bool initialIsAm, required Function(int, int, bool) onConfirm}) {
+  int selectedHour = initialHour, selectedMinute = initialMinute; bool selectedIsAm = initialIsAm;
+  showDialog(
     context: context,
-    builder: (_) {
-      return AlertDialog(
-        backgroundColor: Colors.white,
-        title: Text(title),
-        content: StatefulBuilder(
-          builder: (context, setLocal) {
-            return SizedBox(
-              height: 120,
-              child: Column(
-                children: [
-                  Text('Select $title: $temp'),
-                  Slider(
-                    thumbColor: const Color(0xFF004280),
-                    activeColor: const Color(0xFF004280),
-                    inactiveColor: Colors.grey.shade300,
-                    value: temp.toDouble(),
-                    min: min.toDouble(),
-                    max: max.toDouble(),
-                    divisions: max - min,
-                    onChanged: (v) => setLocal(() => temp = v.round()),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(context, temp), child: const Text('OK')),
-        ],
-      );
-    },
+    builder: (context) => Center(
+      child: Container(
+        width: MediaQuery.of(context).size.width * 0.8, height: 250, padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15)),
+        child: Column(children: [
+          Expanded(child: Row(children: [
+            _buildPicker(initialItem: selectedIsAm ? 0 : 1, children: ['AM', 'PM'], onChanged: (i) => selectedIsAm = i == 0),
+            _buildPicker(initialItem: selectedHour - 1, children: List.generate(12, (i) => (i + 1).toString().padLeft(2, '0')), onChanged: (i) => selectedHour = i + 1),
+            _buildPicker(initialItem: selectedMinute, children: List.generate(60, (i) => i.toString().padLeft(2, '0')), onChanged: (i) => selectedMinute = i),
+          ])),
+          const SizedBox(height: 10),
+          Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: Colors.black))),
+            TextButton(style: TextButton.styleFrom(backgroundColor: Color(0xFF004280)), onPressed: () { onConfirm(selectedHour, selectedMinute, selectedIsAm); Navigator.pop(context); }, child: const Text('OK', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+          ])
+        ]),
+      ),
+    ),
   );
+}
+
+Widget _buildPicker({required int initialItem, required List<String> children, required ValueChanged<int> onChanged}) {
+  return Expanded(child: CupertinoPicker(scrollController: FixedExtentScrollController(initialItem: initialItem), itemExtent: 40, useMagnifier: true, magnification: 1.2, onSelectedItemChanged: onChanged, children: children.map((text) => Center(child: Text(text, style: const TextStyle(color: Colors.black, fontSize: 20, fontWeight: FontWeight.w400)))).toList()));
 }

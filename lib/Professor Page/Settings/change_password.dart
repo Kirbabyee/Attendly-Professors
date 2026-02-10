@@ -24,7 +24,7 @@ class _ChangePasswordState extends State<ChangePassword> {
     if (!RegExp(r'[!@#$%^&*(),.?":{}|<>_\-+=/\\[\]~`]').hasMatch(pw)) {
       return 'Must contain at least 1 special character';
     }
-    return null; // ✅ valid
+    return null;
   }
 
   final supabase = Supabase.instance.client;
@@ -77,7 +77,6 @@ class _ChangePasswordState extends State<ChangePassword> {
     );
   }
 
-  // ✅ Step 1: check current password (same function you used)
   Future<void> _checkCurrentPassword() async {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) throw Exception("Not logged in");
@@ -100,7 +99,6 @@ class _ChangePasswordState extends State<ChangePassword> {
     }
   }
 
-  // ✅ Step 2: change password (recommended: Edge Function that calls Admin API)
   Future<void> _sendOtpForChangePassword() async {
     final user = supabase.auth.currentUser;
     if (user == null) throw Exception("Not logged in");
@@ -123,7 +121,7 @@ class _ChangePasswordState extends State<ChangePassword> {
   }
 
   Future<bool> _showOtpModal({
-    required String email, // ✅ add
+    required String email,
     required String password,
     required Future<void> Function() onResend,
     required Future<void> Function(String otp) onVerify,
@@ -133,7 +131,7 @@ class _ChangePasswordState extends State<ChangePassword> {
       context: context,
       barrierDismissible: false,
       builder: (_) => _OtpDialog(
-        email: email, // ✅ pass
+        email: email,
         password: password,
         cooldownSeconds: cooldownSeconds,
         onResend: onResend,
@@ -295,6 +293,7 @@ class _ChangePasswordState extends State<ChangePassword> {
 
         Form(
           key: _pwFormKey,
+          autovalidateMode: AutovalidateMode.onUserInteraction,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -395,6 +394,7 @@ class _ChangePasswordState extends State<ChangePassword> {
 
         Form(
           key: _newPwFormKey,
+          autovalidateMode: AutovalidateMode.onUserInteraction,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -469,7 +469,7 @@ class _ChangePasswordState extends State<ChangePassword> {
                 final currentEmail = supabase.auth.currentUser?.email ?? '';
 
                 final verified = await _showOtpModal(
-                  email: currentEmail, // ✅ add
+                  email: currentEmail,
                   password: newPw,
                   cooldownSeconds: 60,
                   onResend: () => _sendOtpForChangePassword(),
@@ -512,14 +512,14 @@ class _ChangePasswordState extends State<ChangePassword> {
 
 
 class _OtpDialog extends StatefulWidget {
-  final String email; // ✅ add
+  final String email;
   final String password;
   final int cooldownSeconds;
   final Future<void> Function() onResend;
   final Future<void> Function(String otp) onVerify;
 
   const _OtpDialog({
-    required this.email, // ✅ add
+    required this.email,
     required this.password,
     required this.cooldownSeconds,
     required this.onResend,
@@ -531,14 +531,14 @@ class _OtpDialog extends StatefulWidget {
 }
 
 class _OtpDialogState extends State<_OtpDialog> {
-  String? _otpError; // ✅ show warning + red border
+  String? _otpError;
   String maskEmail(String email) {
     final e = email.trim();
     final at = e.indexOf('@');
     if (at <= 1) return email; // fallback
 
     final local = e.substring(0, at);
-    final domain = e.substring(at); // kasama na '@'
+    final domain = e.substring(at);
 
     if (local.length <= 2) {
       return '${local[0]}*${domain}';
@@ -561,6 +561,10 @@ class _OtpDialogState extends State<_OtpDialog> {
   void initState() {
     super.initState();
     _startCooldown(widget.cooldownSeconds);
+
+    _otp.addListener(() {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
@@ -585,6 +589,46 @@ class _OtpDialogState extends State<_OtpDialog> {
   }
 
   String get _otpValue => _otp.text.trim();
+
+  Future<void> _showSuccessModal() async {
+    await showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.check_circle_outline, color: Colors.green, size: 50),
+            const SizedBox(height: 14),
+            const Text(
+              "OTP successfully sent",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              "Please check your email for the new code.",
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF004280),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: () => Navigator.pop(context),
+                child: const Text("Got it!", style: TextStyle(color: Colors.white)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -712,12 +756,17 @@ class _OtpDialogState extends State<_OtpDialog> {
               onTap: (_left > 0 || _resending)
                   ? null
                   : () async {
-                setState(() => _resending = true);
+                setState(() {
+                  _resending = true;
+                  _otpError = null;
+                  _otp.clear();
+                });
                 try {
                   await widget.onResend();
                   if (!mounted) return;
                   _startCooldown(widget.cooldownSeconds);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('OTP resent. Please check your email.')));
+                  // ✅ Show Success Modal instead of SnackBar
+                  _showSuccessModal();
                 } catch (e) {
                   if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(

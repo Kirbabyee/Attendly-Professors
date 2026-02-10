@@ -531,6 +531,10 @@ class _OtpDialogState extends State<_OtpDialog> {
   void initState() {
     super.initState();
     _startCooldown(widget.cooldownSeconds);
+
+    _otp.addListener(() {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
@@ -555,6 +559,46 @@ class _OtpDialogState extends State<_OtpDialog> {
   }
 
   String get _otpValue => _otp.text.trim();
+
+  Future<void> _showSuccessModal() async {
+    await showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.check_circle_outline, color: Colors.green, size: 50),
+            const SizedBox(height: 14),
+            const Text(
+              "OTP successfully sent",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              "Please check your email for the new code.",
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF004280),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: () => Navigator.pop(context),
+                child: const Text("Got it!", style: TextStyle(color: Colors.white)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -682,12 +726,17 @@ class _OtpDialogState extends State<_OtpDialog> {
               onTap: (_left > 0 || _resending)
                   ? null
                   : () async {
-                setState(() => _resending = true);
+                setState(() {
+                  _resending = true;
+                  _otpError = null;
+                  _otp.clear();
+                });
                 try {
                   await widget.onResend();
                   if (!mounted) return;
                   _startCooldown(widget.cooldownSeconds);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('OTP resent. Please check your email.')));
+                  // ✅ Show Success Modal instead of SnackBar
+                  _showSuccessModal();
                 } catch (e) {
                   if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(

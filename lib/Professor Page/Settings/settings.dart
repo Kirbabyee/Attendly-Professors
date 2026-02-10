@@ -571,7 +571,7 @@ class _SettingsState extends State<Settings> {
                       padding: EdgeInsets.all(screenHeight * .023),
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadiusGeometry.circular(8),
+                        borderRadius: BorderRadius.circular(8),
                       ),
                       child: Column(
                         children: [
@@ -672,78 +672,13 @@ class _SettingsState extends State<Settings> {
                     ),
                     SizedBox(height: screenHeight * .023),
 
-                    Container(
-                      width: screenWidth * .9,
-                      padding: EdgeInsets.all(screenHeight * .023),
-                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
-                      child: Column(
-                        children: [
-                          Row(
-                            children: [
-                              Icon(Icons.memory, color: Colors.black),
-                              SizedBox(width: 10),
-                              Text('Device', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black)),
-                            ],
-                          ),
-                          const SizedBox(height: 15),
-                          OutlinedButton(
-                            onPressed: () {
-                              Navigator.pushNamed(context, '/add_device');
-                            },
-                            style: OutlinedButton.styleFrom(
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadiusGeometry.circular(8),
-                              ),
-                              side: BorderSide.none,
-                              backgroundColor: Color(0x90D9D9D9),
-                            ),
-                            child: Padding(
-                              padding: EdgeInsets.symmetric(vertical: screenHeight * .013),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Change Device',
-                                        style: TextStyle(
-                                          fontSize: screenHeight * .014,
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.black,
-                                        ),
-                                      ),
-                                      Text(
-                                        'Update your linked ESP32 device',
-                                        style: TextStyle(
-                                          fontSize: screenHeight * .014,
-                                          color: Colors.black,
-                                          fontWeight: FontWeight.w300,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  Icon(
-                                    Icons.keyboard_arrow_right,
-                                    size: screenHeight * .023,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    SizedBox(height: screenHeight * .023),
-
                     // About
                     Container(
                       width: screenWidth * .9,
                       padding: EdgeInsets.all(screenHeight * .023),
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadiusGeometry.circular(8),
+                        borderRadius: BorderRadius.circular(8),
                       ),
                       child: Column(
                         children: [
@@ -831,7 +766,7 @@ class _SettingsState extends State<Settings> {
                                             termOfService,
                                             textAlign: TextAlign.justify,
                                             style: TextStyle(
-                                                fontSize: screenHeight * .019
+                                                fontSize: screenHeight * .014 // ✅ Liitan ang font
                                             ),
                                           ),
                                         ),
@@ -859,7 +794,7 @@ class _SettingsState extends State<Settings> {
                                 builder: (context) {
                                   return AlertDialog(
                                     shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadiusGeometry.circular(8)
+                                        borderRadius: BorderRadius.circular(8)
                                     ),
                                     backgroundColor: Colors.white,
                                     title: Text(
@@ -1123,6 +1058,10 @@ class _OtpDialogState extends State<_OtpDialog> {
   void initState() {
     super.initState();
     _startCooldown(widget.cooldownSeconds);
+
+    _otp.addListener(() {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
@@ -1147,6 +1086,46 @@ class _OtpDialogState extends State<_OtpDialog> {
   }
 
   String get _otpValue => _otp.text.trim();
+
+  Future<void> _showSuccessModal() async {
+    await showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.check_circle_outline, color: Colors.green, size: 50),
+            const SizedBox(height: 14),
+            const Text(
+              "OTP successfully sent",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              "Please check your email for the new code.",
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF004280),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: () => Navigator.pop(context),
+                child: const Text("Got it!", style: TextStyle(color: Colors.white)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1274,12 +1253,17 @@ class _OtpDialogState extends State<_OtpDialog> {
               onTap: (_left > 0 || _resending)
                   ? null
                   : () async {
-                setState(() => _resending = true);
+                setState(() {
+                  _resending = true;
+                  _otpError = null;
+                  _otp.clear();
+                });
                 try {
                   await widget.onResend();
                   if (!mounted) return;
                   _startCooldown(widget.cooldownSeconds);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('OTP resent. Please check your email.')));
+                  // ✅ Show Success Modal
+                  _showSuccessModal();
                 } catch (e) {
                   if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
