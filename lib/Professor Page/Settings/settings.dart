@@ -24,14 +24,14 @@ class _SettingsState extends State<Settings> {
   @override
   void initState() {
     super.initState();
-    _loadProfessor(force: true); // ✅ always force when opening settings
+    _loadProfessor(force: true); // always force when opening settings
   }
 
   void _toast(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  // ✅ Generic Toggle Handler (ON/OFF)
+  // Generic Toggle Handler (ON/OFF)
   Future<void> _handle2FAToggle(bool value) async {
     final actionText = value ? "Enable" : "Disable";
     final email = _professor?['email']?.toString() ?? '';
@@ -90,7 +90,7 @@ class _SettingsState extends State<Settings> {
 
       if (verified == true) {
         await _update2FAInDatabase(value);
-        // ✅ Dynamic Success Modal call
+        // Dynamic Success Modal call
         await _showToggleSuccess(value);
       } else {
         setState(() => is2FAOn = !value);
@@ -102,8 +102,8 @@ class _SettingsState extends State<Settings> {
     }
   }
 
-  // ✅ Compact Success Modal
-  // ✅ Dynamic Success Modal para sa Enable at Disable
+  // Compact Success Modal
+  // Dynamic Success Modal para sa Enable at Disable
   Future<void> _showToggleSuccess(bool isEnabling) async {
     final screenHeight = MediaQuery.of(context).size.height;
 
@@ -170,7 +170,7 @@ class _SettingsState extends State<Settings> {
     );
   }
 
-  // ✅ Loading Dialog Helper
+  // Loading Dialog Helper
   void _showLoadingDialog(String message) {
     showDialog(
       context: context,
@@ -267,10 +267,10 @@ class _SettingsState extends State<Settings> {
       setState(() {
         _professor = s;
 
-        // ✅ Push switch sync
+        // Push switch sync
         isNotificationOn = (s?['push_enabled'] as bool?) ?? false;
 
-        // ✅ 2FA switch sync
+        // 2FA switch sync
         is2FAOn = (s?['two_fa_enabled'] as bool?) ?? false;
 
         _loadingProfessor = false;
@@ -538,9 +538,9 @@ class _SettingsState extends State<Settings> {
                                         // 2) token behavior (NEW RULES)
                                         if (value) {
                                           await FirebaseMessaging.instance.requestPermission(alert: true, badge: true, sound: true);
-                                          await svc.replaceTokenForUser(professorId: profId); // ✅ delete old then add new
+                                          await svc.replaceTokenForUser(professorId: profId); // delete old then add new
                                         } else {
-                                          await svc.removeAllForUser(professorId: profId); // ✅ remove tokens
+                                          await svc.removeAllForUser(professorId: profId); // remove tokens
                                         }
 
                                         // 3) refresh UI from DB
@@ -766,7 +766,7 @@ class _SettingsState extends State<Settings> {
                                             termOfService,
                                             textAlign: TextAlign.justify,
                                             style: TextStyle(
-                                                fontSize: screenHeight * .014 // ✅ Liitan ang font
+                                                fontSize: screenHeight * .014 // Liitan ang font
                                             ),
                                           ),
                                         ),
@@ -919,7 +919,7 @@ class _SettingsState extends State<Settings> {
 
                         final supabase = Supabase.instance.client;
 
-                        // ✅ check internet first
+                        // check internet first
                         final okNet = await _hasInternet();
                         if (!okNet) {
                           // no loading dialog needed, but you can keep it if you want
@@ -980,7 +980,7 @@ class _SettingsState extends State<Settings> {
                             } catch (_) {}
                           }
 
-                          await supabase.auth.signOut(); // ✅ server sign out
+                          await supabase.auth.signOut(); // server sign out
                           ProfessorSession.clear();
 
                           if (!mounted) return;
@@ -990,7 +990,7 @@ class _SettingsState extends State<Settings> {
                           if (!mounted) return;
                           Navigator.pop(context); // close loading
 
-                          // ✅ fallback: local logout even if signOut failed mid-way
+                          // fallback: local logout even if signOut failed mid-way
                           _localLogout();
                         }
                       },
@@ -1011,14 +1011,14 @@ class _SettingsState extends State<Settings> {
 }
 
 class _OtpDialog extends StatefulWidget {
-  final String email; // ✅ add
+  final String email; // add
   final String password;
   final int cooldownSeconds;
   final Future<void> Function() onResend;
   final Future<void> Function(String otp) onVerify;
 
   const _OtpDialog({
-    required this.email, // ✅ add
+    required this.email, // add
     required this.password,
     required this.cooldownSeconds,
     required this.onResend,
@@ -1030,7 +1030,7 @@ class _OtpDialog extends StatefulWidget {
 }
 
 class _OtpDialogState extends State<_OtpDialog> {
-  String? _otpError; // ✅ show warning + red border
+  String? _otpError; // show warning + red border
   String maskEmail(String email) {
     final e = email.trim();
     final at = e.indexOf('@');
@@ -1262,7 +1262,7 @@ class _OtpDialogState extends State<_OtpDialog> {
                   await widget.onResend();
                   if (!mounted) return;
                   _startCooldown(widget.cooldownSeconds);
-                  // ✅ Show Success Modal
+                  // Show Success Modal
                   _showSuccessModal();
                 } catch (e) {
                   if (!mounted) return;

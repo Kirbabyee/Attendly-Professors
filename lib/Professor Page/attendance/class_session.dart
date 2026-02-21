@@ -6,7 +6,7 @@ class ClassSession extends StatefulWidget {
   final String session;
   final List<String> students;
 
-  // ✅ add these
+  // add these
   final String courseTitle;
   final String courseCode;
   final String professor;
@@ -24,7 +24,7 @@ class ClassSession extends StatefulWidget {
     required this.session,
     required this.students,
 
-    // ✅ required
+    // required
     required this.courseTitle,
     required this.courseCode,
     required this.professor,
@@ -75,7 +75,7 @@ class _ClassSessionState extends State<ClassSession> {
           students: widget.students,
           onStarted: _handleStarted,
 
-          // ✅ pass data
+          // pass data
           classId: widget.classId,
           courseTitle: widget.courseTitle,
           courseCode: widget.courseCode,
@@ -88,7 +88,7 @@ class _ClassSessionState extends State<ClassSession> {
           students: widget.students,
           onEnded: _handleEnded,
 
-          // ✅ pass data
+          // pass data
           classId: widget.classId,
           courseTitle: widget.courseTitle,
           courseCode: widget.courseCode,

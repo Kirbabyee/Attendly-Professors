@@ -67,7 +67,7 @@ class _ChangeEmailState extends State<ChangeEmail> {
     );
   }
 
-  // ✅ Step 1: check password
+  // Step 1: check password
   Future<void> _checkCurrentPassword() async {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) throw Exception("Not logged in");
@@ -90,7 +90,7 @@ class _ChangeEmailState extends State<ChangeEmail> {
     }
   }
 
-  // ✅ Step 2: send otp to new email
+  // Step 2: send otp to new email
   Future<void> _sendOtpToNewEmail(String newEmail) async {
     final currentPassword = _passwordController.text.trim();
     final userId = supabase.auth.currentUser?.id;
@@ -112,7 +112,7 @@ class _ChangeEmailState extends State<ChangeEmail> {
     }
   }
 
-  // ✅ verify otp + update professors table only
+  // verify otp + update professors table only
   Future<void> _verifyOtpAndChangeprofessorsEmail(String otp) async {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) throw Exception("Not logged in");
@@ -162,7 +162,7 @@ class _ChangeEmailState extends State<ChangeEmail> {
         borderRadius: BorderRadius.circular(8),
         borderSide: BorderSide.none,
       ),
-      errorText: errorText, // ✅ null = no error
+      errorText: errorText, // null = no error
       suffixIcon: suffix,
     );
   }
@@ -285,7 +285,7 @@ class _ChangeEmailState extends State<ChangeEmail> {
                 },
                 decoration: _input(
                   'Enter your password',
-                  errorText: _pwError != null ? 'Password incorrect' : null, // ✅ only shows when server says incorrect
+                  errorText: _pwError != null ? 'Password incorrect' : null, // only shows when server says incorrect
                   suffix: IconButton(
                     onPressed: () => setState(() => showPassword = !showPassword),
                     icon: Icon(showPassword ? Icons.visibility : Icons.visibility_off, size: 18),
@@ -324,7 +324,7 @@ class _ChangeEmailState extends State<ChangeEmail> {
               });
 
               try {
-                await _checkCurrentPassword(); // ✅ server validates
+                await _checkCurrentPassword(); // server validates
 
                 if (!mounted) return;
                 setState(() => step = 2);
@@ -455,7 +455,7 @@ class _ChangeEmailState extends State<ChangeEmail> {
               } catch (e) {
                 final msg = e.toString().replaceFirst('Exception: ', '');
 
-                // ✅ Check kung ang error ay tungkol sa existing email
+                // Check kung ang error ay tungkol sa existing email
                 if (msg.toLowerCase().contains('already registered') || msg.toLowerCase().contains('exists')) {
                   setState(() => _emailError = 'Email already registered to another account');
                 } else {
@@ -501,7 +501,7 @@ class _OtpDialog extends StatefulWidget {
 }
 
 class _OtpDialogState extends State<_OtpDialog> {
-  String? _otpError; // ✅ show warning + red border
+  String? _otpError; // show warning + red border
   String maskEmail(String email) {
     final e = email.trim();
     final at = e.indexOf('@');
@@ -735,7 +735,7 @@ class _OtpDialogState extends State<_OtpDialog> {
                   await widget.onResend();
                   if (!mounted) return;
                   _startCooldown(widget.cooldownSeconds);
-                  // ✅ Show Success Modal instead of SnackBar
+                  // Show Success Modal instead of SnackBar
                   _showSuccessModal();
                 } catch (e) {
                   if (!mounted) return;

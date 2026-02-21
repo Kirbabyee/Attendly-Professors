@@ -1,132 +1,200 @@
 import 'dart:io';
-import 'package:excel/excel.dart';
+import 'package:flutter/services.dart' show rootBundle, ByteData;
 import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
-Future<Map<String, dynamic>> fetchSessionHeader(String sessionId) async {
-  final supabase = Supabase.instance.client;
-
-  final row = await supabase
-      .from('class_sessions')
-      .select('id, started_at, ended_at, classes(course, course_code)')
-      .eq('id', sessionId)
-      .maybeSingle();
-
-  if (row == null) throw 'Session not found';
-
-  final cls = row['classes'] as Map<String, dynamic>?;
-  return {
-    'session_id': row['id'],
-    'course': (cls?['course'] ?? '').toString(),
-    'course_code': (cls?['course_code'] ?? '').toString(),
-    'started_at': row['started_at'],
-    'ended_at': row['ended_at'],
-  };
-}
-
-Future<List<Map<String, dynamic>>> fetchSessionAttendance(String sessionId) async {
-  final supabase = Supabase.instance.client;
-
-  final rows = await supabase
-      .from('attendance')
-      .select('status, time_in, time_out, students(first_name,last_name,student_number)')
-      .eq('session_id', sessionId)
-      .order('time_in', ascending: true);
-
-  return (rows as List).cast<Map<String, dynamic>>();
-}
+import 'package:syncfusion_flutter_xlsio/xlsio.dart' as xcel;
 
 Future<void> exportSessionToExcel({
   required String sessionId,
-  required String fileLabel, // e.g. "CCS101_2026-01-15"
+  required String fileLabel,
 }) async {
-  final supabase = Supabase.instance.client;
+  print("--- START EXPORT ---");
+  print("Session ID: $sessionId");
 
-  // ✅ 0) Pull session header info (course, code, start/end)
-  final header = await fetchSessionHeader(sessionId);
-  final course = (header['course'] ?? '').toString();
-  final courseCode = (header['course_code'] ?? '').toString();
-  final startedAt = fmtDateTime(header['started_at']);
-  final endedAt = fmtDateTime(header['ended_at']);
+  try {
+    // 1. FETCH HEADER
+    print("Step 1: Fetching Header...");
+    final supabase = Supabase.instance.client;
+    final headerRow = await supabase
+        .from('class_sessions')
+        .select('id, started_at, ended_at, classes(course, course_code)')
+        .eq('id', sessionId)
+        .maybeSingle();
 
-  // ✅ 1) Pull attendance rows for this session
-  final rows = await supabase
-      .from('attendance')
-      .select('status, time_in, time_out, students(first_name,last_name,student_number)')
-      .eq('session_id', sessionId)
-      .order('time_in', ascending: true);
+    if (headerRow == null) {
+      print("ERROR: Session Header is NULL. Check Session ID.");
+      return;
+    }
 
-  final data = (rows as List).cast<Map<String, dynamic>>();
+    // Safe extraction with Null Coalescing (??)
+    final cls = headerRow['classes'] as Map<String, dynamic>?;
+    final courseName = (cls?['course'] ?? 'N/A').toString();
+    final courseCode = (cls?['course_code'] ?? 'N/A').toString();
+    final startStr = fmtDateTime(headerRow['started_at']);
+    final endStr = fmtDateTime(headerRow['ended_at']);
 
-  // ✅ 2) Build Excel
-  final excel = Excel.createExcel();
-  final sheet = excel['Attendance'];
+    print("Header Fetched: $courseName ($courseCode)");
 
-  // ✅ Session header rows (top)
-  sheet.appendRow([TextCellValue('Course'), TextCellValue(course.isEmpty ? '-' : course)]);
-  sheet.appendRow([TextCellValue('Course Code'), TextCellValue(courseCode.isEmpty ? '-' : courseCode)]);
-  sheet.appendRow([TextCellValue('Session Started'), TextCellValue(startedAt)]);
-  sheet.appendRow([TextCellValue('Session Ended'), TextCellValue(endedAt)]);
-  sheet.appendRow([TextCellValue('')]);
+    // 2. FETCH ATTENDANCE
+    print("Step 2: Fetching Attendance Rows...");
+    final rowsData = await supabase
+        .from('attendance')
+        .select('status, time_in, time_out, students(first_name,last_name,student_number)')
+        .eq('session_id', sessionId)
+        .order('time_in', ascending: true);
 
-  // ✅ Table header
-  sheet.appendRow([
-    TextCellValue('Student Number'),
-    TextCellValue('Name'),
-    TextCellValue('Status'),
-    TextCellValue('Time In'),
-    TextCellValue('Time Out'),
-  ]);
+    final attendanceList = (rowsData as List?) ?? [];
+    print("Attendance Rows: ${attendanceList.length}");
 
-  for (final r in data) {
-    final s = r['students'] as Map<String, dynamic>?;
+    // 3. CREATE EXCEL
+    print("Step 3: Creating Excel Instance...");
+    final xcel.Workbook workbook = xcel.Workbook();
+    final xcel.Worksheet sheet = workbook.worksheets[0];
+    sheet.name = "Attendance Report";
 
-    final studNo = (s?['student_number'] ?? '').toString();
-    final name =
-    '${(s?['first_name'] ?? '').toString()} ${(s?['last_name'] ?? '').toString()}'
-        .trim();
+    // 4. INSERT LOGO (Wrap in try-catch to prevent crash)
+    print("Step 4: Loading Logo...");
+    try {
+      // Siguraduhin na ang 'assets/attendly_logo.png' ay nasa pubspec.yaml
+      final ByteData data = await rootBundle.load('assets/logo.png');
+      final List<int> bytes = data.buffer.asUint8List();
 
-    final status = (r['status'] ?? '').toString();
-    final timeIn = fmtDateTime(r['time_in'] ?? '').toString();
-    final timeOut = fmtDateTime(r['time_out'] ?? '').toString();
+      // Check if bytes are valid
+      if (bytes.isNotEmpty) {
+        final xcel.Picture picture = sheet.pictures.addStream(1, 2, bytes);
+        picture.lastRow = 4;
+        picture.lastColumn = 4;
+        print("Logo Loaded Successfully.");
+      } else {
+        print("WARNING: Logo bytes are empty.");
+      }
+    } catch (e) {
+      print("WARNING: Failed to load logo. Skipping... Error: $e");
+      // Continue execution even if logo fails
+    }
 
-    sheet.appendRow([
-      TextCellValue(studNo.isEmpty ? '-' : studNo),
-      TextCellValue(name.isEmpty ? 'Unknown' : name),
-      TextCellValue(status.isEmpty ? '-' : status),
-      TextCellValue(timeIn.isEmpty ? '-' : timeIn),
-      TextCellValue(timeOut.isEmpty ? '-' : timeOut),
-    ]);
+    // 5. WRITE TITLES
+    print("Step 5: Writing Titles...");
+    final xcel.Range titleRange = sheet.getRangeByName('A6:E6');
+    titleRange.merge();
+    titleRange.text = "ATTENDANCE REPORT";
+    titleRange.cellStyle.hAlign = xcel.HAlignType.center;
+    titleRange.cellStyle.bold = true;
+    titleRange.cellStyle.fontSize = 14;
+
+    // Generated Date
+    final xcel.Range dateRange = sheet.getRangeByName('A7:E7');
+    dateRange.merge();
+    final now = DateTime.now();
+    dateRange.text = "Generated: ${now.toString()}";
+    dateRange.cellStyle.hAlign = xcel.HAlignType.center;
+
+    // Course Info
+    final xcel.Range row9 = sheet.getRangeByName('A9:E9');
+    row9.merge();
+    row9.text = "Course: $courseName ($courseCode)";
+    row9.cellStyle.hAlign = xcel.HAlignType.center;
+    row9.cellStyle.bold = true;
+
+    // Time Info
+    final xcel.Range row10 = sheet.getRangeByName('A10:E10');
+    row10.merge();
+    row10.text = "Session Started: $startStr";
+    row10.cellStyle.hAlign = xcel.HAlignType.center;
+
+    final xcel.Range row11 = sheet.getRangeByName('A11:E11');
+    row11.merge();
+    row11.text = "Session Ended: $endStr";
+    row11.cellStyle.hAlign = xcel.HAlignType.center;
+
+    // 6. WRITE DATA
+    print("Step 6: Writing Table Data...");
+
+    // Headers
+    final List<String> headers = ["Student Number", "Name", "Status", "Time In", "Time Out"];
+    for (int i = 0; i < headers.length; i++) {
+      final cell = sheet.getRangeByIndex(14, i + 1);
+      cell.text = headers[i];
+      cell.cellStyle.bold = true;
+      cell.cellStyle.borders.all.lineStyle = xcel.LineStyle.thin;
+      cell.cellStyle.hAlign = xcel.HAlignType.center;
+    }
+
+    int currentRow = 15;
+    for (final r in attendanceList) {
+      // Safe casting inside the loop
+      final rowMap = r as Map<String, dynamic>;
+      final s = rowMap['students'] as Map<String, dynamic>?;
+
+      final studNo = (s?['student_number'] ?? '-').toString();
+      final firstName = (s?['first_name'] ?? '').toString();
+      final lastName = (s?['last_name'] ?? '').toString();
+      final fullName = "$firstName $lastName".trim();
+
+      final status = (rowMap['status'] ?? '-').toString();
+      final timeIn = fmtDateTime(rowMap['time_in']);
+      final timeOut = fmtDateTime(rowMap['time_out']);
+
+      _addCell(sheet, currentRow, 1, studNo, center: true);
+      _addCell(sheet, currentRow, 2, fullName.isEmpty ? 'Unknown' : fullName, center: false);
+      _addCell(sheet, currentRow, 3, status, center: true);
+      _addCell(sheet, currentRow, 4, timeIn, center: true);
+      _addCell(sheet, currentRow, 5, timeOut, center: true);
+
+      currentRow++;
+    }
+
+    // 7. PAGE SETUP & SAVE
+    print("Step 7: Saving File...");
+    sheet.pageSetup.isFitToPage = true;
+    sheet.pageSetup.fitToPagesWide = 1;
+
+    final List<int> bytes = workbook.saveAsStream();
+    workbook.dispose();
+
+    if (bytes.isEmpty) {
+      print("ERROR: Generated Excel bytes are empty.");
+      return;
+    }
+
+    final dir = await getApplicationDocumentsDirectory();
+    final safeLabel = fileLabel.replaceAll(RegExp(r'[^\w\-]+'), '_');
+    final fileName = "Attendance_$safeLabel.xlsx";
+    final file = File('${dir.path}/$fileName');
+
+    await file.writeAsBytes(bytes, flush: true);
+    print("File saved at: ${file.path}");
+
+    await OpenFilex.open(file.path);
+    print("--- SUCCESS ---");
+
+  } catch (e, stacktrace) {
+    print("CRITICAL ERROR in Export: $e");
+    print(stacktrace);
   }
+}
 
-  // ✅ 3) Save file
-  final bytes = excel.save();
-  if (bytes == null) throw 'Failed to generate Excel file';
-
-  final dir = await getApplicationDocumentsDirectory();
-  final safeLabel = fileLabel.replaceAll(RegExp(r'[^\w\-]+'), '_');
-  final file = File('${dir.path}/attendance_$safeLabel.xlsx');
-
-  await file.writeAsBytes(bytes, flush: true);
-
-  // ✅ 4) Open the file
-  await OpenFilex.open(file.path);
+// Helper para sa cell styling
+void _addCell(xcel.Worksheet sheet, int row, int col, String val, {bool center = false}) {
+  final cell = sheet.getRangeByIndex(row, col);
+  cell.text = val;
+  cell.cellStyle.borders.all.lineStyle = xcel.LineStyle.thin;
+  if (center) {
+    cell.cellStyle.hAlign = xcel.HAlignType.center;
+  } else {
+    cell.cellStyle.hAlign = xcel.HAlignType.left;
+    cell.cellStyle.indent = 1;
+  }
 }
 
 String fmtDateTime(dynamic v) {
   if (v == null) return '-';
-
   try {
     final d = DateTime.parse(v.toString()).toLocal();
-    return '${d.year.toString().padLeft(4, '0')}-'
-        '${d.month.toString().padLeft(2, '0')}-'
-        '${d.day.toString().padLeft(2, '0')} '
-        '${d.hour.toString().padLeft(2, '0')}:'
-        '${d.minute.toString().padLeft(2, '0')}:'
-        '${d.second.toString().padLeft(2, '0')}';
+    return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')} '
+        '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
   } catch (_) {
     return '-';
   }
 }
-

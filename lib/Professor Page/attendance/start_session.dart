@@ -10,7 +10,7 @@ class StartSession extends StatefulWidget {
   final List<String> students;
   final VoidCallback onStarted;
 
-  // ✅ add these fields
+  // add these fields
   final String courseTitle;
   final String classId;
   final String courseCode;
@@ -24,7 +24,7 @@ class StartSession extends StatefulWidget {
     required this.students,
     required this.onStarted,
 
-    // ✅ required para di null
+    // required para di null
     required this.courseTitle,
     required this.classId,
     required this.courseCode,
@@ -224,7 +224,7 @@ class _StartSessionState extends State<StartSession> {
       try {
         final supabase = Supabase.instance.client;
 
-        // ✅ create session row
+        // create session row
         final inserted = await supabase
             .from('class_sessions')
             .insert({
@@ -258,7 +258,7 @@ class _StartSessionState extends State<StartSession> {
         }
 
         if (!mounted) return;
-        widget.onStarted(); // ✅ update UI/dashboard
+        widget.onStarted(); // update UI/dashboard
       } catch (e) {
         if (!mounted) return;
         setState(() => _starting = false);

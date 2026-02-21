@@ -6,7 +6,7 @@ class ProfessorSession {
 
   static Map<String, dynamic>? professor; // cached row
   static Completer<void>? _loading;     // prevents double fetch
-  static String? _cachedUserId;         // ✅ track which user owns the cache
+  static String? _cachedUserId;         // track which user owns the cache
 
   static void set(Map<String, dynamic>? data) {
     professor = data;
@@ -17,7 +17,7 @@ class ProfessorSession {
     final user = supabase.auth.currentUser;
     final uid = user?.id;
 
-    // ✅ if user changed, clear cache automatically
+    // if user changed, clear cache automatically
     if (_cachedUserId != uid) {
       professor = null;
       _cachedUserId = uid;

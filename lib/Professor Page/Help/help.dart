@@ -95,7 +95,7 @@ class _HelpState extends State<Help> {
   }
 
 
-  int expandedIndex = -1; // ✅ Only one expands at a time
+  int expandedIndex = -1; // Only one expands at a time
 
   List<FAQs> faqs = [
     FAQs(
@@ -141,7 +141,7 @@ class _HelpState extends State<Help> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ✅ Header row (stable)
+          // Header row (stable)
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -170,7 +170,7 @@ class _HelpState extends State<Help> {
                 ),
               ),
 
-              // ✅ Arrow stays aligned nicely
+              // Arrow stays aligned nicely
               AnimatedRotation(
                 turns: isExpanded ? 0.5 : 0,
                 duration: const Duration(milliseconds: 200),
@@ -188,7 +188,7 @@ class _HelpState extends State<Help> {
             ],
           ),
 
-          // ✅ Animated body (doesn't mess header)
+          // Animated body (doesn't mess header)
           ClipRect(
             child: AnimatedSize(
               duration: const Duration(milliseconds: 200),

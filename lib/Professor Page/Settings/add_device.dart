@@ -17,7 +17,7 @@ class _AddDeviceState extends State<AddDevice> {
   Map<String, dynamic>? _deviceInfo;
   bool _isLoadingInfo = true;
 
-  // ✅ 1. Idagdag ang Controller para ma-control ang camera (start/stop)
+  // 1. Idagdag ang Controller para ma-control ang camera (start/stop)
   final MobileScannerController _scannerController = MobileScannerController(
     detectionSpeed: DetectionSpeed.noDuplicates, // Iwasan ang sunod-sunod na scan
     facing: CameraFacing.back,
@@ -58,7 +58,7 @@ class _AddDeviceState extends State<AddDevice> {
   void dispose() {
     _deviceSubscription?.cancel();
     _scannerController.dispose();
-    _detectionTimer?.cancel(); // ✅ Cancel timer on dispose
+    _detectionTimer?.cancel(); // Cancel timer on dispose
     super.dispose();
   }
 
@@ -417,7 +417,7 @@ class _AddDeviceState extends State<AddDevice> {
                             _detectionTimer?.cancel();
                             _lastDetectedCode = code;
 
-                            // ✅ Simulan ang delay (e.g., 1.5 seconds na tutok sa QR)
+                            // Simulan ang delay (e.g., 1.5 seconds na tutok sa QR)
                             _detectionTimer = Timer(const Duration(milliseconds: 1500), () async {
                               _isProcessing = true; // Lock scanning
                               _scannerController.stop();
@@ -512,7 +512,7 @@ class _AddDeviceState extends State<AddDevice> {
             onPressed: () {
               Navigator.pop(context);
               setState(() => _isScanning = true);
-              _scannerController.start(); // ✅ 5. I-RESTART ang scanner kung kinansela
+              _scannerController.start(); // 5. I-RESTART ang scanner kung kinansela
             },
             child: const Text("Cancel"),
           ),

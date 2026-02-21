@@ -37,6 +37,23 @@ class _AccountInformationState extends State<AccountInformation> {
     _loadProfessor();
   }
 
+  String _getDeptAbbreviation(String? dept) {
+    if (dept == null || dept.isEmpty) return '-';
+    final d = dept.trim().toUpperCase();
+    if (d.contains('INFORMATION TECHNOLOGY')) return 'IT';
+    if (d.contains('COMPUTER SCIENCE')) return 'CS';
+    if (d.contains('INFORMATION SYSTEMS')) return 'IS';
+    if (d.contains('ENTERTAINMENT AND MULTIMEDIA COMPUTING')) return 'EMC';
+    if (d.contains('INFORMATION AND COMMUNICATIONS TECHNOLOGY')) return 'CICT';
+
+    // Fallback: take first letters of each word
+    final words = d.split(' ');
+    if (words.length > 1) {
+      return words.where((w) => w.isNotEmpty && w != 'OF' && w != 'AND').map((w) => w[0]).join();
+    }
+    return d;
+  }
+
   Future<void> _loadProfessor() async {
     try {
       final s = await ProfessorSession.get(); // cached
@@ -102,7 +119,7 @@ class _AccountInformationState extends State<AccountInformation> {
       final uid = supabase.auth.currentUser!.id;
       final path = '$uid/avatar$fileExt';
 
-      // ✅ Upload (upsert = overwrite)
+      // Upload (upsert = overwrite)
       await supabase.storage.from('avatars').uploadBinary(
         path,
         bytes,
@@ -112,11 +129,11 @@ class _AccountInformationState extends State<AccountInformation> {
         ),
       );
 
-      // ✅ Get public URL (works if bucket is PUBLIC)
+      // Get public URL (works if bucket is PUBLIC)
       final baseUrl = supabase.storage.from('avatars').getPublicUrl(path);
       final publicUrl = '$baseUrl?t=${DateTime.now().millisecondsSinceEpoch}';
 
-      // ✅ Save to professors table
+      // Save to professors table
       final nowIso = DateTime.now().toUtc().toIso8601String();
 
       await supabase
@@ -434,7 +451,7 @@ class _AccountInformationState extends State<AccountInformation> {
                     ),
                   ),
                   SizedBox(height: 20,),
-                  // ✅ Loading / Error state
+                  // Loading / Error state
                   if (_loadingProfessor)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 10),
@@ -484,7 +501,7 @@ class _AccountInformationState extends State<AccountInformation> {
                                 ),
                               ),
                               Text(
-                                _professor?['department'] ?? '',
+                                _getDeptAbbreviation(_professor?['department'] ?? ''),
                                 style: TextStyle(
                                   fontSize: 12,
                                     fontWeight: FontWeight.bold
@@ -521,13 +538,13 @@ class _AccountInformationState extends State<AccountInformation> {
                                   final clean = (newEmail ?? '').trim().toLowerCase();
                                   if (clean.isEmpty) return;
 
-                                  // ✅ update UI immediately
+                                  // update UI immediately
                                   final fresh = {
                                     ...?_professor,
                                     'email': clean,
                                   };
 
-                                  ProfessorSession.set(fresh); // ✅ update cache so next open is updated
+                                  ProfessorSession.set(fresh); // update cache so next open is updated
 
                                   if (!mounted) return;
                                   setState(() {
@@ -535,7 +552,7 @@ class _AccountInformationState extends State<AccountInformation> {
                                     _email = clean;
                                   });
 
-                                  // ✅ optional: re-fetch from DB to guarantee consistency (recommended)
+                                  // optional: re-fetch from DB to guarantee consistency (recommended)
                                   await _loadProfessor();
                                 },
                                 child: Text(

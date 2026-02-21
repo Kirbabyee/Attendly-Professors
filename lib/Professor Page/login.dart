@@ -63,7 +63,7 @@ class _LoginState extends State<Login> {
     final emailRegex = RegExp(r'^[\w\.-]+@([\w-]+\.)+[\w-]{2,}$');
     if (!emailRegex.hasMatch(email)) return 'Enter a valid email';
 
-    return null; // ✅ valid
+    return null; // valid
   }
 
 
@@ -280,7 +280,7 @@ class _LoginState extends State<Login> {
                             validator: (value) {
                               final v = value ?? '';
                               if (v.isEmpty) return 'Password is required';
-                              if (v.length < 4) return 'Minimum 6 characters';
+                              if (v.length <= 7) return 'Minimum 8 characters';
                               return null;
                             },
                           ),
@@ -416,7 +416,7 @@ class _LoginState extends State<Login> {
                               return;
                             }
 
-                            // ✅ reset attempts on successful login
+                            // reset attempts on successful login
                             try {
                               await supabase.functions.invoke(
                                 'prof-login-reset',
@@ -440,7 +440,7 @@ class _LoginState extends State<Login> {
                             // fallback kung sakaling walang email sa table
                             final emailToUse = emailReal.isNotEmpty ? emailReal : email;
 
-                            // ✅ 2FA flow
+                            // 2FA flow
                             if (twoFA) {
                               // 1) send OTP using email
                               try {
@@ -487,7 +487,7 @@ class _LoginState extends State<Login> {
                               }
                             }
 
-                            // ✅ terms after 2FA
+                            // terms after 2FA
                             if (terms != 1) {
                               // optional: you can still sync tokens here if you consider them "logged in"
                               // but safest: do NOT register token until fully accepted terms
@@ -495,15 +495,15 @@ class _LoginState extends State<Login> {
                               return;
                             }
 
-                            // ✅ NOW fully authenticated + passed 2FA + accepted terms
+                            // NOW fully authenticated + passed 2FA + accepted terms
                             final pushEnabled = (profRow['push_enabled'] == true);
                             final svc = PushTokenService(supabase);
 
                             if (pushEnabled) {
                               await FirebaseMessaging.instance.requestPermission(alert: true, badge: true, sound: true);
-                              await svc.replaceTokenForUser(professorId: uid); // ✅ delete old then add new
+                              await svc.replaceTokenForUser(professorId: uid); // delete old then add new
                             } else {
-                              await svc.removeAllForUser(professorId: uid);    // ✅ cleanup tokens
+                              await svc.removeAllForUser(professorId: uid);    // cleanup tokens
                             }
 
                             try {

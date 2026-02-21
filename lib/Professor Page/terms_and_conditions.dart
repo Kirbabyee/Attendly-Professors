@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'professor_session.dart'; // ✅ use your prof session cache
+import 'professor_session.dart'; // use your prof session cache
 import 'mainshell.dart';
 import '../main.dart'; // LandingPage / root
 

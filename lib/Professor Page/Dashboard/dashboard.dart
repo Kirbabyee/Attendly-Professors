@@ -150,7 +150,7 @@ class _DashboardState extends State<Dashboard> {
     final overnight = endMinRaw <= startMin;
     final endMin = overnight ? endMinRaw + 1440 : endMinRaw;
 
-    // ✅ startable window = 10 mins before start
+    //  startable window = 10 mins before start
     final startableFrom = startMin - 10;
 
     int prevDay(int d) => d == DateTime.monday ? DateTime.sunday : d - 1;
@@ -168,7 +168,7 @@ class _DashboardState extends State<Dashboard> {
       return false;
     }
 
-    // ✅ show arrow only within [start-10 .. before end]
+    //  show arrow only within [start-10 .. before end]
     if (nowAdj >= endMin) return false;
     return nowAdj >= startableFrom;
   }
@@ -281,7 +281,7 @@ class _DashboardState extends State<Dashboard> {
     if (!ok) {
       if (!mounted) return;
       setState(() => _offline = true);
-      return; // ✅ don't call supabase
+      return; //  don't call supabase
     } else {
       if (mounted && _offline) setState(() => _offline = false);
     }
@@ -340,7 +340,7 @@ class _DashboardState extends State<Dashboard> {
           room: (m['room'] ?? '') as String,
           sched: (m['schedule'] ?? '') as String,
           session: sessionText,
-          yearSection: (m['year_section'] ?? '') as String, // ✅ HERE
+          yearSection: (m['year_section'] ?? '') as String, //  HERE
         );
       }).toList();
 
@@ -424,7 +424,7 @@ class _DashboardState extends State<Dashboard> {
 
     final today = DateTime.now().weekday; // monday=1..sunday=7
 
-    // ✅ circular difference (0..6)
+    //  circular difference (0..6)
     return (target - today + 7) % 7;
   }
 
@@ -434,7 +434,7 @@ class _DashboardState extends State<Dashboard> {
     if (parts.length < 2) return 9999;
 
     final timePart = parts.sublist(1).join(':').trim(); // "02:10 PM - 03:00 PM"
-    final range = timePart.split(RegExp(r'\s*[-–]\s*')); // ✅ handles "-" and "–"
+    final range = timePart.split(RegExp(r'\s*[-–]\s*')); //  handles "-" and "–"
     if (range.length < 2) return 9999;
 
     final startStr = range.first.trim(); // "02:10 PM"
@@ -446,7 +446,7 @@ class _DashboardState extends State<Dashboard> {
     if (parts.length < 2) return 9999;
 
     final timePart = parts.sublist(1).join(':').trim();
-    final range = timePart.split(RegExp(r'\s*[-–]\s*')); // ✅ handles "-" and "–"
+    final range = timePart.split(RegExp(r'\s*[-–]\s*')); //  handles "-" and "–"
     if (range.length < 2) return 9999;
 
     final endStr = range.last.trim(); // "03:00 PM"
@@ -500,21 +500,21 @@ class _DashboardState extends State<Dashboard> {
     int prevDay(int d) => d == DateTime.monday ? DateTime.sunday : d - 1;
     int nextDay(int d) => d == DateTime.sunday ? DateTime.monday : d + 1;
 
-    // ✅ detect overnight (ex: 11:30 PM - 12:59 AM)
+    //  detect overnight (ex: 11:30 PM - 12:59 AM)
     final overnight = endMinRaw <= startMin;
     final endMin = overnight ? endMinRaw + 1440 : endMinRaw;
 
-    // ✅ pending window (can be negative if start is 12:00 AM)
+    //  pending window (can be negative if start is 12:00 AM)
     final pendingWindowStart = startMin - 120;
 
-    // ✅ place "now" on the same timeline as the schedule
+    //  place "now" on the same timeline as the schedule
     int? nowAdj;
 
     if (now.weekday == schedWeekday) {
       // same day as schedule start
       nowAdj = nowMin;
     } else if (pendingWindowStart < 0 && now.weekday == prevDay(schedWeekday)) {
-      // ✅ pending window spills to previous day (ex: 12:00 AM start)
+      //  pending window spills to previous day (ex: 12:00 AM start)
       nowAdj = nowMin - 1440;
     } else if (overnight && now.weekday == nextDay(schedWeekday)) {
       // overnight continuation day
@@ -565,7 +565,7 @@ class _DashboardState extends State<Dashboard> {
 
     unRead = widget.unRead;
 
-    // ✅ start connectivity watcher
+    //  start connectivity watcher
     _connSub = Connectivity().onConnectivityChanged.listen((_) async {
       await _updateOffline();
 
@@ -583,10 +583,10 @@ class _DashboardState extends State<Dashboard> {
       await _loadClasses();
     });
 
-    // ✅ DB is the single source of truth (but don't spam when offline)
+    //  DB is the single source of truth (but don't spam when offline)
     _tick = Timer.periodic(const Duration(minutes: 1), (_) async {
       if (!mounted) return;
-      if (_offline) return; // ✅ skip reload while offline
+      if (_offline) return; //  skip reload while offline
       await _loadClasses();
     });
   }
@@ -604,8 +604,8 @@ class _DashboardState extends State<Dashboard> {
       if (!mounted) return;
       setState(() {
         _offline = true;
-        _loadingProf = false; // ✅ stop spinner
-        _profErr = null;      // ✅ no supabase error text
+        _loadingProf = false; //  stop spinner
+        _profErr = null;      //  no supabase error text
       });
       return;
     } else {
@@ -632,7 +632,7 @@ class _DashboardState extends State<Dashboard> {
     }
   }
 
-  Widget textBold(tag, name, double screenHeight) {
+  Widget textBold(tag, name, double screenHeight, {bool isEmail = false}) {
     return Text.rich(
       TextSpan(
         text: tag,
@@ -640,10 +640,16 @@ class _DashboardState extends State<Dashboard> {
         children: [
           TextSpan(
             text: name,
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: screenHeight * .015),
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: screenHeight * .015,
+              overflow: isEmail ? TextOverflow.ellipsis : null,
+            ),
           ),
         ],
       ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
     );
   }
 
@@ -677,13 +683,15 @@ class _DashboardState extends State<Dashboard> {
     if (_prof == null) {
       return Text('No professor record found', style: TextStyle(fontSize: screenHeight * .013));
     }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        textBold('Name: ', '${_prof?['professor_name'] ?? '-'}', screenHeight),
-        textBold('Dept: ', _getDeptAbbreviation(_prof?['department']), screenHeight),
-        textBold('Email: ', '${_prof?['email'] ?? '-'}', screenHeight),
-      ],
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          textBold('Name: ', '${_prof?['professor_name'] ?? '-'}', screenHeight),
+          textBold('Dept: ', _getDeptAbbreviation(_prof?['department']), screenHeight),
+          textBold('Email: ', '${_prof?['email'] ?? '-'}', screenHeight, isEmail: true),
+        ],
+      ),
     );
   }
 
@@ -1118,7 +1126,7 @@ class _DashboardState extends State<Dashboard> {
                               style: TextStyle(color: Colors.white, fontSize: screenHeight * .016)
                             ),
                             Text(
-                              _loadingProf ? 'Loading...' : '$firstName!',
+                              _loadingProf ? 'Loading...' : 'Prof. $firstName!',
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: screenHeight * .025,

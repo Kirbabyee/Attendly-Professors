@@ -9,7 +9,7 @@ class PushTokenService {
   String get _platform => Platform.isIOS ? 'ios' : 'android';
   Future<String?> _getToken() => FirebaseMessaging.instance.getToken();
 
-  /// ✅ delete ALL old tokens then insert current token
+  /// delete ALL old tokens then insert current token
   Future<void> replaceTokenForUser({required String professorId}) async {
     final token = await _getToken();
     if (token == null || token.isEmpty) return;
@@ -22,13 +22,13 @@ class PushTokenService {
       'user_id': professorId,
       'token': token,
       'platform': _platform,
-      'role': 'professor', // ✅ REQUIRED (fix)
+      'role': 'professor', // REQUIRED (fix)
       'last_seen_at': DateTime.now().toUtc().toIso8601String(),
       'updated_at': DateTime.now().toUtc().toIso8601String(), // optional but nice
     });
   }
 
-  /// ✅ remove tokens (used for OFF and logout)
+  /// remove tokens (used for OFF and logout)
   Future<void> removeAllForUser({required String professorId}) async {
     await supabase.from('device_tokens').delete().eq('user_id', professorId);
   }

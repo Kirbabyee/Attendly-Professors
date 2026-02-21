@@ -18,7 +18,7 @@ Future<void> initLocalNotifs() async {
 
   await _localNotifs.initialize(initSettings);
 
-  // ✅ create Android channel
+  // create Android channel
   final androidPlugin = _localNotifs
       .resolvePlatformSpecificImplementation<
       AndroidFlutterLocalNotificationsPlugin>();

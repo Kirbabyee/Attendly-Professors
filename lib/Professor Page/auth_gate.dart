@@ -87,7 +87,7 @@ class _AuthGateState extends State<AuthGate> with SingleTickerProviderStateMixin
 
       setState(() => _offline = !ok);
 
-      // ✅ auto retry kapag bumalik net at may session
+      // auto retry kapag bumalik net at may session
       if (ok && !_routing) {
         final s = supabase.auth.currentSession;
         if (s != null) {
@@ -131,7 +131,7 @@ class _AuthGateState extends State<AuthGate> with SingleTickerProviderStateMixin
     _routing = true;
 
     try {
-      // ✅ 1. Logged out → Landing
+      // 1. Logged out → Landing
       if (session == null) {
         if (!mounted) return;
         Navigator.of(context).pushAndRemoveUntil(
@@ -160,7 +160,7 @@ class _AuthGateState extends State<AuthGate> with SingleTickerProviderStateMixin
         debugPrint("Error checking maintenance status: $e");
       }
 
-      // ✅ 2. Offline Check
+      // 2. Offline Check
       final okNet = await _hasInternet();
       if (!okNet) {
         if (!mounted) return;
@@ -205,7 +205,7 @@ class _AuthGateState extends State<AuthGate> with SingleTickerProviderStateMixin
         return;
       }
 
-      // ✅ 3. Terms Check
+      // 3. Terms Check
       if (terms != 1) {
         try { await _timeout(supabase.auth.signOut()); } catch (_) {}
         ProfessorSession.clear();
@@ -257,7 +257,7 @@ class _AuthGateState extends State<AuthGate> with SingleTickerProviderStateMixin
         }
       }
 
-      // ✅ passed checks → mainshell
+      // passed checks → mainshell
       if (!mounted) return;
 
       Navigator.of(context).pushAndRemoveUntil(

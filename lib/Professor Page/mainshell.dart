@@ -39,7 +39,7 @@ class _MainshellState extends State<Mainshell> {
 
   late final List<Widget> _pages;
 
-  // ✅ offline banner state
+  // offline banner state
   bool _offline = false;
   StreamSubscription? _connSub;
 
@@ -223,7 +223,7 @@ class _MainshellState extends State<Mainshell> {
         onUnreadChanged: _handleUnreadChanged,
       ),
 
-      // ✅ overlay banner (no layout shift)
+      // overlay banner (no layout shift)
       body: Stack(
         children: [
           IndexedStack(

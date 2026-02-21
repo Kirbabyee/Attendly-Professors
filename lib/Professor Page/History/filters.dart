@@ -94,7 +94,7 @@ class _DataFilterState extends State<DataFilter> {
       setState(() {
         _offline = true;
         _loading = false;
-        _err = null; // ✅ wag supabase error
+        _err = null; // wag supabase error
         // keep old data on screen
       });
       _showNoInternetSnack();
@@ -112,7 +112,7 @@ class _DataFilterState extends State<DataFilter> {
       final profId = supabase.auth.currentUser?.id;
       if (profId == null) throw 'No logged in professor.';
 
-      // ✅ Pull from history, join to session + class
+      // Pull from history, join to session + class
       final rows = await supabase
           .from('attendance_history')
           .select('''
@@ -135,7 +135,7 @@ class _DataFilterState extends State<DataFilter> {
 
       final raw = (rows as List).cast<Map<String, dynamic>>();
 
-      // ✅ Dedup by session_id (latest changed_at per session)
+      // Dedup by session_id (latest changed_at per session)
       final seen = <String>{};
       final list = <AttendanceRecord>[];
 
@@ -155,7 +155,7 @@ class _DataFilterState extends State<DataFilter> {
         final courseName = (cls['course'] ?? '').toString();
         final courseCode = (cls['course_code'] ?? '').toString();
 
-        // ✅ date source: started_at if available, else changed_at (history timestamp)
+        // date source: started_at if available, else changed_at (history timestamp)
         final startedAt = cs['started_at'];
         final changedAt = r['changed_at'];
 
@@ -182,6 +182,7 @@ class _DataFilterState extends State<DataFilter> {
       allRecords = list;
       filteredRecords = List.from(allRecords);
 
+      // FIX: Use courseName for the dropdown options to match the UI logic
       classOptions = [
         'All',
         ...{ for (final r in allRecords) r.courseName }
@@ -210,8 +211,9 @@ class _DataFilterState extends State<DataFilter> {
         final matchesSearch = record.courseName.toLowerCase().contains(query) ||
             record.courseCode.toLowerCase().contains(query);
 
+        // FIX: Match against courseName since that's what's in classOptions
         final matchesClass =
-            selectedClass == 'All' || record.courseCode == selectedClass;
+            selectedClass == 'All' || record.courseName == selectedClass;
 
         final matchesDate = selectedRange == null || (() {
           final d = DateTime(record.date.year, record.date.month, record.date.day);
@@ -316,7 +318,7 @@ class _DataFilterState extends State<DataFilter> {
                   final DateTime? start = r.startDate;
                   if (start == null) return;
 
-                  final DateTime end = r.endDate ?? start; // ✅ non-null end
+                  final DateTime end = r.endDate ?? start; // non-null end
                   temp = DateTimeRange(start: start, end: end);
                 }
               },
@@ -506,8 +508,8 @@ class _DataFilterState extends State<DataFilter> {
 
                 SizedBox(height: screenHeight > 700 ? 10 : 5),
 
-                // ✅ LIST AREA (scrollable)
-                // ✅ LIST AREA (scrollable) + PULL TO REFRESH
+                // LIST AREA (scrollable)
+                // LIST AREA (scrollable) + PULL TO REFRESH
                 Expanded(
                   child: _loading
                       ? const Center(child: CircularProgressIndicator())
@@ -611,4 +613,3 @@ class _DataFilterState extends State<DataFilter> {
     );
   }
 }
-

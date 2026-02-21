@@ -33,7 +33,7 @@ class _NewPasswordState extends State<NewPassword> {
     super.dispose();
   }
 
-  // ✅ Strong password (same as earlier)
+  // Strong password (same as earlier)
   String? validateStrongPassword(String? value) {
     final pw = (value ?? '').trim();
     if (pw.isEmpty) return 'Password is required';
@@ -124,7 +124,7 @@ class _NewPasswordState extends State<NewPassword> {
   // OTP Dialog
   // ============================
   Future<bool> _showOtpModal({
-    required String email, // ✅ add
+    required String email, // add
     required Future<void> Function() onResend,
     required Future<void> Function(String otp) onVerify,
     int cooldownSeconds = 60,
@@ -133,7 +133,7 @@ class _NewPasswordState extends State<NewPassword> {
       context: context,
       barrierDismissible: false,
       builder: (_) => _OtpDialog(
-        email: email, // ✅ pass
+        email: email, // pass
         cooldownSeconds: cooldownSeconds,
         onResend: onResend,
         onVerify: (otp) async {
@@ -173,7 +173,7 @@ class _NewPasswordState extends State<NewPassword> {
 
       // 2) open OTP modal + verify
       final verified = await _showOtpModal(
-        email: email, // ✅ add
+        email: email, // add
         cooldownSeconds: 60,
         onResend: () => _sendOtp(email: email),
         onVerify: (otp) => _verifyOtpAndReset(
@@ -253,19 +253,25 @@ class _NewPasswordState extends State<NewPassword> {
 
                 Form(
                   key: _formKey,
+                  autovalidateMode: AutovalidateMode.onUserInteraction, // ✅ Real-time validation
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text('New Password', style: TextStyle(fontSize: screenHeight * .017)),
                       SizedBox(height: screenHeight * .008),
                       SizedBox(
-                        height: screenHeight * .065,
+                        height: screenHeight * .085, // Increase height to accommodate real-time errors
                         width: screenWidth * .83,
                         child: TextFormField(
                           obscureText: showPassword,
                           controller: _newPasswordController,
                           style: TextStyle(fontSize: screenHeight * .017),
                           keyboardType: TextInputType.text,
+                          onChanged: (_) {
+                            if (_confirmPasswordController.text.isNotEmpty) {
+                              _formKey.currentState!.validate();
+                            }
+                          },
                           decoration: InputDecoration(
                             errorMaxLines: 2,
                             errorStyle: TextStyle(fontSize: screenHeight * .013, height: 1.2),
@@ -306,7 +312,7 @@ class _NewPasswordState extends State<NewPassword> {
                       Text('Confirm Password', style: TextStyle(fontSize: screenHeight * .017)),
                       const SizedBox(height: 5),
                       SizedBox(
-                        height: screenHeight * .065,
+                        height: screenHeight * .085, // Increase height to accommodate real-time errors
                         width: screenWidth * .83,
                         child: TextFormField(
                           obscureText: showPassword,
@@ -392,7 +398,7 @@ class _NewPasswordState extends State<NewPassword> {
 // OTP dialog widget
 // ======================
 class _OtpDialog extends StatefulWidget {
-  final String email; // ✅ add
+  final String email; // add
   final int cooldownSeconds;
   final Future<void> Function() onResend;
   final Future<void> Function(String otp) onVerify;
@@ -401,7 +407,7 @@ class _OtpDialog extends StatefulWidget {
   final String? Function() getError;
 
   const _OtpDialog({
-    required this.email, // ✅ add
+    required this.email, // add
     required this.cooldownSeconds,
     required this.onResend,
     required this.onVerify,
@@ -603,7 +609,7 @@ class _OtpDialogState extends State<_OtpDialog> {
                       } catch (e) {
                         final msg = e.toString().replaceFirst('Exception: ', '');
                         if (!mounted) return;
-                        widget.onError(msg.isEmpty ? 'Invalid OTP' : msg);
+                        widget.onError(msg.isEmpty ? 'Invalid OTP' : 'Invalid OTP');
                         HapticFeedback.mediumImpact();
                       } finally {
                         if (mounted) setState(() => _verifying = false);
@@ -628,7 +634,7 @@ class _OtpDialogState extends State<_OtpDialog> {
                   await widget.onResend();
                   if (!mounted) return;
                   _startCooldown(widget.cooldownSeconds);
-                  // ✅ Show Success Modal instead of SnackBar
+                  // Show Success Modal instead of SnackBar
                   _showSuccessModal();
                 } catch (e) {
                   if (!mounted) return;

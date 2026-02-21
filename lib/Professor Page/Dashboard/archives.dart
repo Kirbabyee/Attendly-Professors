@@ -28,7 +28,7 @@ class _ArchivesState extends State<Archives> {
     final supabase = Supabase.instance.client;
 
     try {
-      // ✅ update DB
+      // update DB
       await supabase
           .from('classes')
           .update({'archived': false})
@@ -36,12 +36,12 @@ class _ArchivesState extends State<Archives> {
 
       if (!mounted) return;
 
-      // ✅ update UI
+      // update UI
       setState(() {
         widget.archivedClasses.removeAt(index);
       });
 
-      // ✅ send back to dashboard
+      // send back to dashboard
       widget.onRestore(item);
     } catch (e) {
       if (!mounted) return;
@@ -61,7 +61,7 @@ class _ArchivesState extends State<Archives> {
       String sched,
       String session,
       double screenHeight,
-      Future<void> Function() onRestore, // ✅ async
+      Future<void> Function() onRestore, // async
     ) {
     final screenWidth = MediaQuery.of(context).size.width;
     return Container(
@@ -316,7 +316,7 @@ class _ArchivesState extends State<Archives> {
                   final c = widget.archivedClasses[index];
 
                   return classCard(
-                    c.id,          // ✅ class id
+                    c.id,          // class id
                     c.course,
                     c.courseCode,
                     c.professor,

@@ -7,7 +7,7 @@ class ClassItem {
   final String room;
   final String sched;
   final String session;
-  final String yearSection; // ✅ ADD
+  final String yearSection; //  ADD
 
   ClassItem({
     required this.id,
@@ -18,7 +18,7 @@ class ClassItem {
     required this.room,
     required this.sched,
     required this.session,
-    required this.yearSection, // ✅ ADD
+    required this.yearSection, //  ADD
   });
 
   ClassItem copyWith({

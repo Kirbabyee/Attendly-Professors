@@ -80,7 +80,7 @@ class _ForgotPasswordState extends State<ForgotPassword> {
         return;
       }
 
-      // ✅ proceed to new password screen
+      // proceed to new password screen
       if (!mounted) return;
       Navigator.pushNamed(
         context,
@@ -171,7 +171,7 @@ class _ForgotPasswordState extends State<ForgotPassword> {
                           keyboardType: TextInputType.emailAddress,
                           onChanged: (_) => _clearServerErrors(),
                           decoration: InputDecoration(
-                            errorText: _emailServerError, // ✅ server error here
+                            errorText: _emailServerError, // server error here
                             errorMaxLines: 2,
                             errorStyle: TextStyle(fontSize: screenHeight * .013, height: 1.2),
                             hintText: 'Enter Email',

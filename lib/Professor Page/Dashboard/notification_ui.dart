@@ -20,13 +20,13 @@ class NotificationItem {
   final int id;
   final String text;
   int? read; // null = unread, 1 = read
-  final DateTime createdAt;
+  final DateTime displayTime; // Gagamitin natin ang scheduled_for dito
 
   NotificationItem({
     required this.id,
     required this.text,
     required this.read,
-    required this.createdAt,
+    required this.displayTime,
   });
 
   bool get isRead => read == 1;
@@ -51,11 +51,15 @@ class _NotificationsDrawerState extends State<NotificationsDrawer> {
       final uid = supabase.auth.currentUser?.id;
       if (uid == null) return;
 
+      final nowIso = DateTime.now().toUtc().toIso8601String();
+
+      // Fetching based on scheduled_for
       final rows = await supabase
           .from('notification_queue')
-          .select('id, body, read, created_at')
+          .select('id, body, read, created_at, scheduled_for')
           .eq('target_user_id', uid)
-          .order('created_at', ascending: false)
+          .lte('scheduled_for', nowIso) // Only show if the scheduled time has passed
+          .order('scheduled_for', ascending: false) // Latest schedule first
           .limit(50);
 
       final list = (rows as List)
@@ -65,8 +69,9 @@ class _NotificationsDrawerState extends State<NotificationsDrawer> {
           id: (r['id'] as num).toInt(),
           text: (r['body'] ?? '').toString().trim(),
           read: r['read'] as int?,
-          createdAt: DateTime.tryParse(
-            (r['created_at'] ?? '').toString(),
+          // Gamitin ang scheduled_for kung available, fallback sa created_at
+          displayTime: DateTime.tryParse(
+            (r['scheduled_for'] ?? r['created_at'] ?? '').toString(),
           ) ??
               DateTime.fromMillisecondsSinceEpoch(0),
         );
@@ -202,7 +207,7 @@ class _NotificationsDrawerState extends State<NotificationsDrawer> {
                     return _NotifTile(
                       text: notif.text,
                       isRead: notif.isRead,
-                      createdAt: notif.createdAt,
+                      createdAt: notif.displayTime,
                       onMarkAsRead: () =>
                           _markOneAsRead(notif.id),
                       onMarkAsUnread: () =>

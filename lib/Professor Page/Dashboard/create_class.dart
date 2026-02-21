@@ -6,7 +6,7 @@ import '../professor_session.dart';
 import 'class_item.dart';
 
 class CreateClassSheet extends StatefulWidget {
-  final ClassItem? initialItem; // ✅ optional for edit
+  final ClassItem? initialItem; //  optional for edit
 
   const CreateClassSheet({super.key, this.initialItem});
 
@@ -16,7 +16,7 @@ class CreateClassSheet extends StatefulWidget {
 
 class _CreateClassSheetState extends State<CreateClassSheet> {
   List<Map<String, dynamic>> _wifiList = []; // Listahan ng lahat ng wifi sa campus
-  String _autoWifiSSID = 'No WiFi found for this room'; // Display lang
+  String _autoWifiSSID = 'ClassroomWifi'; //  Default to ClassroomWifi
 
   List<Map<String, dynamic>> _roomSchedules = []; // Schedules taken in this room
   bool _loadingSchedules = false;
@@ -24,7 +24,18 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
   List<Map<String, dynamic>> _availableSubjects = []; // Subjects for dropdown
   bool _loadingSubjects = false;
 
+  List<Map<String, dynamic>> _availablePrograms = []; //  Programs from DB
+  bool _loadingPrograms = false;
+
   final supabase = Supabase.instance.client;
+
+  // Pre-defined room list (Value validation)
+  final List<String> _rooms = [
+    for (int i = 100; i <= 110; i++) i.toString(),
+    for (int i = 200; i <= 210; i++) i.toString(),
+    for (int i = 300; i <= 310; i++) i.toString(),
+    for (int i = 400; i <= 410; i++) i.toString(),
+  ];
 
   Future<void> _loadCampusWifi() async {
     try {
@@ -66,13 +77,30 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
     }
   }
 
+  Future<void> _loadPrograms() async {
+    if (!mounted) return;
+    setState(() => _loadingPrograms = true);
+    try {
+      final data = await supabase
+          .from('programs')
+          .select('program_abbr, program_name')
+          .order('program_abbr');
+      
+      if (!mounted) return;
+      setState(() {
+        _availablePrograms = List<Map<String, dynamic>>.from(data);
+        _loadingPrograms = false;
+      });
+    } catch (e) {
+      debugPrint('Error loading programs: $e');
+      if (mounted) setState(() => _loadingPrograms = false);
+    }
+  }
+
   void _updateAutoWifi(String roomValue) {
     setState(() {
-      if (roomValue.trim().isEmpty) {
-        _autoWifiSSID = 'No room entered';
-      } else {
-        _autoWifiSSID = 'AP${roomValue.trim().toUpperCase()}';
-      }
+      //  Set to ClassroomWifi for now
+      _autoWifiSSID = 'ClassroomWifi';
     });
   }
 
@@ -282,6 +310,7 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
     super.initState();
     _loadCampusWifi(); 
     _loadSubjects(); 
+    _loadPrograms(); //  Load programs from DB
 
     _room.addListener(() {
       _updateAutoWifi(_room.text);
@@ -326,7 +355,6 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
     'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
   ];
 
-  final List<String> _programs = const ['BSIT', 'BSCS', 'BSIS', 'BSEMC'];
   final List<String> _years = const ['1', '2', '3', '4'];
   final List<String> _sections = const ['A', 'B', 'C', 'D'];
 
@@ -450,8 +478,7 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
           ],
         ),
         content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text("This room is already occupied during this time:", style: TextStyle(fontSize: 14)),
             const SizedBox(height: 12),
@@ -523,17 +550,22 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
                   const SizedBox(height: 8),
 
                   _label('Program'),
-                  DropdownButtonFormField<String>(
-                    value: _selectedProgram, 
-                    isExpanded: true, 
-                    isDense: true, 
-                    style: const TextStyle(fontSize: 12, color: Colors.black), 
-                    decoration: _input('Select Program'), 
-                    dropdownColor: Colors.white, 
-                    items: _programs.map((p) => DropdownMenuItem<String>(value: p, child: Text(p, style: const TextStyle(fontSize: 12)))).toList(), 
-                    onChanged: (v) => setState(() => _selectedProgram = v), 
-                    validator: (v) => (v == null || v.isEmpty) ? 'Required' : null
-                  ),
+                  _loadingPrograms
+                    ? const Center(child: CupertinoActivityIndicator(radius: 8))
+                    : DropdownButtonFormField<String>(
+                        value: _availablePrograms.any((p) => p['program_abbr'] == _selectedProgram) ? _selectedProgram : null, 
+                        isExpanded: true, 
+                        isDense: true, 
+                        style: const TextStyle(fontSize: 12, color: Colors.black), 
+                        decoration: _input('Select Program'), 
+                        dropdownColor: Colors.white, 
+                        items: _availablePrograms.map((p) => DropdownMenuItem<String>(
+                          value: p['program_abbr'], 
+                          child: Text('${p['program_abbr']} - ${p['program_name']}', style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)
+                        )).toList(), 
+                        onChanged: (v) => setState(() => _selectedProgram = v), 
+                        validator: (v) => (v == null || v.isEmpty) ? 'Required' : null
+                      ),
                   const SizedBox(height: 8),
 
                   Row(children: [
@@ -543,7 +575,67 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
                   ]),
 
                   _label('Room'),
-                  TextFormField(controller: _room, style: const TextStyle(fontSize: 12), decoration: _input('e.g. 302'), validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null),
+                  DropdownButtonFormField<String>(
+                    value: _rooms.contains(_room.text) ? _room.text : null,
+                    isExpanded: true,
+                    isDense: true,
+                    style: const TextStyle(fontSize: 12, color: Colors.black),
+                    decoration: _input('Select Room'),
+                    dropdownColor: Colors.white,
+                    items: [
+                      // 1st Floor Header
+                      const DropdownMenuItem<String>(
+                        enabled: false,
+                        value: 'HDR_1',
+                        child: Text('1st Floor', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF004280))),
+                      ),
+                      ...[for (int i = 100; i <= 110; i++) i.toString()].map((r) => DropdownMenuItem<String>(
+                        value: r,
+                        child: Padding(padding: const EdgeInsets.only(left: 12), child: Text(r, style: const TextStyle(fontSize: 12))),
+                      )),
+                      
+                      // 2nd Floor Header
+                      const DropdownMenuItem<String>(
+                        enabled: false,
+                        value: 'HDR_2',
+                        child: Text('2nd Floor', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF004280))),
+                      ),
+                      ...[for (int i = 200; i <= 210; i++) i.toString()].map((r) => DropdownMenuItem<String>(
+                        value: r,
+                        child: Padding(padding: const EdgeInsets.only(left: 12), child: Text(r, style: const TextStyle(fontSize: 12))),
+                      )),
+
+                      // 3rd Floor Header
+                      const DropdownMenuItem<String>(
+                        enabled: false,
+                        value: 'HDR_3',
+                        child: Text('3rd Floor', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF004280))),
+                      ),
+                      ...[for (int i = 300; i <= 310; i++) i.toString()].map((r) => DropdownMenuItem<String>(
+                        value: r,
+                        child: Padding(padding: const EdgeInsets.only(left: 12), child: Text(r, style: const TextStyle(fontSize: 12))),
+                      )),
+
+                      // 4th Floor Header
+                      const DropdownMenuItem<String>(
+                        enabled: false,
+                        value: 'HDR_4',
+                        child: Text('4th Floor', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF004280))),
+                      ),
+                      ...[for (int i = 400; i <= 410; i++) i.toString(),].map((r) => DropdownMenuItem<String>(
+                        value: r,
+                        child: Padding(padding: const EdgeInsets.only(left: 12), child: Text(r, style: const TextStyle(fontSize: 12))),
+                      )),
+                    ],
+                    onChanged: (v) {
+                      if (v != null) {
+                        setState(() {
+                          _room.text = v;
+                        });
+                      }
+                    },
+                    validator: (v) => (_room.text.isEmpty) ? 'Required' : null,
+                  ),
                   const SizedBox(height: 18),
 
                   _label('Assigned Room WiFi'),
@@ -595,7 +687,7 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
                           setState(() { _saving = true; });
 
                           try {
-                            // ✅ 1. Room Conflict Check (Modal version)
+                            //  1. Room Conflict Check (Modal version)
                             final conflicts = await _checkRoomConflicts();
                             if (conflicts.isNotEmpty) {
                               setState(() => _saving = false);

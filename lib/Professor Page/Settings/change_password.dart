@@ -765,7 +765,7 @@ class _OtpDialogState extends State<_OtpDialog> {
                   await widget.onResend();
                   if (!mounted) return;
                   _startCooldown(widget.cooldownSeconds);
-                  // ✅ Show Success Modal instead of SnackBar
+                  // Show Success Modal instead of SnackBar
                   _showSuccessModal();
                 } catch (e) {
                   if (!mounted) return;

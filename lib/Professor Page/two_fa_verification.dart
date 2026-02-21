@@ -64,7 +64,7 @@ class _TwoFAVerificationPageState extends State<TwoFAVerificationPage> {
     return '$start${'*' * (local.length - 2)}$end$domain';
   }
 
-  // ✅ one controller only
+  // one controller only
   final _otp = TextEditingController();
   final _otpFocus = FocusNode();
 
@@ -186,7 +186,7 @@ class _TwoFAVerificationPageState extends State<TwoFAVerificationPage> {
       await widget.onResend();
       if (!mounted) return;
 
-      // ✅ Show Success Modal
+      // Show Success Modal
       _showSuccessModal();
 
       _otp.clear();
@@ -228,7 +228,7 @@ class _TwoFAVerificationPageState extends State<TwoFAVerificationPage> {
   Widget build(BuildContext context) {
     final verifyEnabled = _otpComplete && !_verifying;
 
-    // ✅ always show 6 boxes
+    // always show 6 boxes
     final padded = _otpValue.padRight(6);
     final d = padded.substring(0, 6).split('');
 
@@ -264,7 +264,7 @@ class _TwoFAVerificationPageState extends State<TwoFAVerificationPage> {
                   ),
                   const SizedBox(height: 14),
 
-                  // ✅ One real TextField, 6 visual boxes
+                  // One real TextField, 6 visual boxes
                   GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: () => _otpFocus.requestFocus(),
@@ -282,7 +282,7 @@ class _TwoFAVerificationPageState extends State<TwoFAVerificationPage> {
                               FilteringTextInputFormatter.digitsOnly,
                               LengthLimitingTextInputFormatter(6),
                             ],
-                            // ✅ make it "invisible" but still focusable
+                            // make it "invisible" but still focusable
                             style: const TextStyle(
                               color: Colors.transparent,
                               height: 0.01, // keep caret area tiny
