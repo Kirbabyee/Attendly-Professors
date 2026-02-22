@@ -111,6 +111,7 @@ class _FloatingToastState extends State<_FloatingToast>
 class _DashboardState extends State<Dashboard> {
   bool _offline = false;
   StreamSubscription? _connSub;
+  RealtimeChannel? _classesChannel; // ✅ For realtime listener
 
   Future<bool> _hasInternet() async {
     final conn = await Connectivity().checkConnectivity();
@@ -122,6 +123,30 @@ class _DashboardState extends State<Dashboard> {
     final ok = await _hasInternet();
     if (!mounted) return;
     setState(() => _offline = !ok);
+  }
+
+  // ✅ INITIALIZE REALTIME LISTENER
+  void _setupRealtimeListener() {
+    final uid = Supabase.instance.client.auth.currentUser?.id;
+    if (uid == null) return;
+
+    _classesChannel = Supabase.instance.client
+        .channel('public:classes')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'classes',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'professor_id',
+            value: uid,
+          ),
+          callback: (payload) {
+            debugPrint('Realtime change received: ${payload.toString()}');
+            _loadClasses(); // Reload list on any change (archived, new class, edit)
+          },
+        )
+        .subscribe();
   }
 
   bool _canStartFromSched10mins(String sched) {
@@ -168,7 +193,6 @@ class _DashboardState extends State<Dashboard> {
       return false;
     }
 
-    //  show arrow only within [start-10 .. before end]
     if (nowAdj >= endMin) return false;
     return nowAdj >= startableFrom;
   }
@@ -247,7 +271,6 @@ class _DashboardState extends State<Dashboard> {
   OverlayEntry? _toastEntry;
 
   void _showFloatingBubble(String message) {
-    // remove existing toast if any (para hindi nag-o-overlap)
     _toastEntry?.remove();
     _toastEntry = null;
 
@@ -281,7 +304,7 @@ class _DashboardState extends State<Dashboard> {
     if (!ok) {
       if (!mounted) return;
       setState(() => _offline = true);
-      return; //  don't call supabase
+      return;
     } else {
       if (mounted && _offline) setState(() => _offline = false);
     }
@@ -289,11 +312,20 @@ class _DashboardState extends State<Dashboard> {
       final uid = Supabase.instance.client.auth.currentUser?.id;
       if (uid == null) return;
 
+      // 1. Fetch all non-archived classes
       final rows = await Supabase.instance.client
           .from('classes')
           .select('id, course, course_code, class_code, room, schedule, year_section, archived')
           .eq('professor_id', uid)
           .eq('archived', false)
+          .order('created_at', ascending: false);
+
+      // 2. Fetch all archived classes separately for the Archive page state
+      final archRows = await Supabase.instance.client
+          .from('classes')
+          .select('id, course, course_code, class_code, room, schedule, year_section, archived')
+          .eq('professor_id', uid)
+          .eq('archived', true)
           .order('created_at', ascending: false);
 
       final classIds = (rows as List)
@@ -340,19 +372,35 @@ class _DashboardState extends State<Dashboard> {
           room: (m['room'] ?? '') as String,
           sched: (m['schedule'] ?? '') as String,
           session: sessionText,
-          yearSection: (m['year_section'] ?? '') as String, //  HERE
+          yearSection: (m['year_section'] ?? '') as String,
+        );
+      }).toList();
+
+      // For Archives
+      final archList = (archRows as List).map((r) {
+        final m = r as Map<String, dynamic>;
+        return ClassItem(
+          id: m['id'] as String,
+          classCode: (m['class_code'] ?? '') as String,
+          course: (m['course'] ?? '') as String,
+          courseCode: (m['course_code'] ?? '') as String,
+          professor: _prof?['professor_name'] ?? 'Professor',
+          room: (m['room'] ?? '') as String,
+          sched: (m['schedule'] ?? '') as String,
+          session: 'Archived',
+          yearSection: (m['year_section'] ?? '') as String,
         );
       }).toList();
 
       if (!mounted) return;
       setState(() {
-        _classes
-          ..clear()
-          ..addAll(list);
+        _classes.clear();
+        _classes.addAll(list);
+        _archivedClasses.clear();
+        _archivedClasses.addAll(archList);
         _sortClasses();
       });
     } catch (e) {
-      // optional: show snackbar
       if (!mounted) return;
       setState(() => _offline = true);
     }
@@ -361,19 +409,10 @@ class _DashboardState extends State<Dashboard> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   final students = <String>[
-    'John Doe',
-    'Nicole Margarette',
-    'Trisha Lorraine',
-    'Arthur Morgan',
-    'Clark Kent',
-    'Lex Luthor',
-    'Lois Lane',
-    'Lana Lang',
-    'Tony Stark',
+    'John Doe', 'Nicole Margarette', 'Trisha Lorraine', 'Arthur Morgan', 'Clark Kent', 'Lex Luthor', 'Lois Lane', 'Lana Lang', 'Tony Stark',
   ];
 
   final List<ClassItem> _classes = [];
-
   final List<ClassItem> _archivedClasses = [];
 
   late bool unRead;
@@ -387,19 +426,16 @@ class _DashboardState extends State<Dashboard> {
     };
 
     _classes.sort((a, b) {
-      // 1) Session priority
       final aSession = sessionPriority[a.session] ?? 99;
       final bSession = sessionPriority[b.session] ?? 99;
       final sessionCompare = aSession.compareTo(bSession);
       if (sessionCompare != 0) return sessionCompare;
 
-      // 2) Day priority
       final aDay = _daysUntilFromSched(a.sched);
       final bDay = _daysUntilFromSched(b.sched);
       final dayCompare = aDay.compareTo(bDay);
       if (dayCompare != 0) return dayCompare;
 
-      // 3) Start time priority
       final aStart = _startMinutesFromSched(a.sched);
       final bStart = _startMinutesFromSched(b.sched);
       return aStart.compareTo(bStart);
@@ -410,34 +446,25 @@ class _DashboardState extends State<Dashboard> {
     final dayStr = sched.split(':').first.trim().toLowerCase();
 
     const map = {
-      'sunday': DateTime.sunday,
-      'monday': DateTime.monday,
-      'tuesday': DateTime.tuesday,
-      'wednesday': DateTime.wednesday,
-      'thursday': DateTime.thursday,
-      'friday': DateTime.friday,
-      'saturday': DateTime.saturday,
+      'sunday': DateTime.sunday, 'monday': DateTime.monday, 'tuesday': DateTime.tuesday, 'wednesday': DateTime.wednesday, 'thursday': DateTime.thursday, 'friday': DateTime.friday, 'saturday': DateTime.saturday,
     };
 
     final target = map[dayStr];
     if (target == null) return 999;
 
-    final today = DateTime.now().weekday; // monday=1..sunday=7
-
-    //  circular difference (0..6)
+    final today = DateTime.now().weekday;
     return (target - today + 7) % 7;
   }
 
   int _startMinutesFromSched(String sched) {
-    // Example: "Wednesday: 02:10 PM - 03:00 PM" or "Wednesday: 02:10 PM – 03:00 PM"
     final parts = sched.split(':');
     if (parts.length < 2) return 9999;
 
-    final timePart = parts.sublist(1).join(':').trim(); // "02:10 PM - 03:00 PM"
-    final range = timePart.split(RegExp(r'\s*[-–]\s*')); //  handles "-" and "–"
+    final timePart = parts.sublist(1).join(':').trim();
+    final range = timePart.split(RegExp(r'\s*[-–]\s*'));
     if (range.length < 2) return 9999;
 
-    final startStr = range.first.trim(); // "02:10 PM"
+    final startStr = range.first.trim();
     return _toMinutes(startStr);
   }
 
@@ -446,15 +473,14 @@ class _DashboardState extends State<Dashboard> {
     if (parts.length < 2) return 9999;
 
     final timePart = parts.sublist(1).join(':').trim();
-    final range = timePart.split(RegExp(r'\s*[-–]\s*')); //  handles "-" and "–"
+    final range = timePart.split(RegExp(r'\s*[-–]\s*'));
     if (range.length < 2) return 9999;
 
-    final endStr = range.last.trim(); // "03:00 PM"
+    final endStr = range.last.trim();
     return _toMinutes(endStr);
   }
 
   int _toMinutes(String time) {
-    // time example: "9:00 AM"
     final reg = RegExp(r'^(\d{1,2}):(\d{2})\s*(AM|PM)$', caseSensitive: false);
     final m = reg.firstMatch(time.trim());
     if (m == null) return 9999;
@@ -463,7 +489,6 @@ class _DashboardState extends State<Dashboard> {
     final minute = int.parse(m.group(2)!);
     final ampm = m.group(3)!.toUpperCase();
 
-    // Convert to 24h
     if (ampm == 'AM') {
       if (hour == 12) hour = 0;
     } else {
@@ -475,9 +500,7 @@ class _DashboardState extends State<Dashboard> {
 
   String _sessionFromSched(String sched) {
     final now = DateTime.now();
-
     final dayStr = sched.split(':').first.trim().toLowerCase();
-
     final startMin = _startMinutesFromSched(sched);
     final endMinRaw = _endMinutesFromSched(sched);
     final nowMin = now.hour * 60 + now.minute;
@@ -485,13 +508,7 @@ class _DashboardState extends State<Dashboard> {
     if (startMin == 9999 || endMinRaw == 9999) return 'Upcoming';
 
     const map = {
-      'sunday': DateTime.sunday,
-      'monday': DateTime.monday,
-      'tuesday': DateTime.tuesday,
-      'wednesday': DateTime.wednesday,
-      'thursday': DateTime.thursday,
-      'friday': DateTime.friday,
-      'saturday': DateTime.saturday,
+      'sunday': DateTime.sunday, 'monday': DateTime.monday, 'tuesday': DateTime.tuesday, 'wednesday': DateTime.wednesday, 'thursday': DateTime.thursday, 'friday': DateTime.friday, 'saturday': DateTime.saturday,
     };
 
     final schedWeekday = map[dayStr];
@@ -500,24 +517,16 @@ class _DashboardState extends State<Dashboard> {
     int prevDay(int d) => d == DateTime.monday ? DateTime.sunday : d - 1;
     int nextDay(int d) => d == DateTime.sunday ? DateTime.monday : d + 1;
 
-    //  detect overnight (ex: 11:30 PM - 12:59 AM)
     final overnight = endMinRaw <= startMin;
     final endMin = overnight ? endMinRaw + 1440 : endMinRaw;
-
-    //  pending window (can be negative if start is 12:00 AM)
     final pendingWindowStart = startMin - 120;
 
-    //  place "now" on the same timeline as the schedule
     int? nowAdj;
-
     if (now.weekday == schedWeekday) {
-      // same day as schedule start
       nowAdj = nowMin;
     } else if (pendingWindowStart < 0 && now.weekday == prevDay(schedWeekday)) {
-      //  pending window spills to previous day (ex: 12:00 AM start)
       nowAdj = nowMin - 1440;
     } else if (overnight && now.weekday == nextDay(schedWeekday)) {
-      // overnight continuation day
       nowAdj = nowMin + 1440;
     } else {
       return 'Upcoming';
@@ -525,7 +534,6 @@ class _DashboardState extends State<Dashboard> {
     if (nowAdj >= endMin) return 'Ended';
     if (nowAdj >= pendingWindowStart) return 'Pending';
     return 'Upcoming';
-
   }
 
   DateTime? _scheduleEndToday(String sched) {
@@ -533,18 +541,12 @@ class _DashboardState extends State<Dashboard> {
     final dayStr = sched.split(':').first.trim().toLowerCase();
 
     const map = {
-      'sunday': DateTime.sunday,
-      'monday': DateTime.monday,
-      'tuesday': DateTime.tuesday,
-      'wednesday': DateTime.wednesday,
-      'thursday': DateTime.thursday,
-      'friday': DateTime.friday,
-      'saturday': DateTime.saturday,
+      'sunday': DateTime.sunday, 'monday': DateTime.monday, 'tuesday': DateTime.tuesday, 'wednesday': DateTime.wednesday, 'thursday': DateTime.thursday, 'friday': DateTime.friday, 'saturday': DateTime.saturday,
     };
 
     final schedWeekday = map[dayStr];
     if (schedWeekday == null) return null;
-    if (now.weekday != schedWeekday) return null; // today only
+    if (now.weekday != schedWeekday) return null;
 
     final endMin = _endMinutesFromSched(sched);
     if (endMin == 9999) return null;
@@ -553,8 +555,6 @@ class _DashboardState extends State<Dashboard> {
     return base.add(Duration(minutes: endMin));
   }
 
-
-
   Map<String, dynamic>? _prof;
   bool _loadingProf = true;
   String? _profErr;
@@ -562,31 +562,26 @@ class _DashboardState extends State<Dashboard> {
   @override
   void initState() {
     super.initState();
-
     unRead = widget.unRead;
 
-    //  start connectivity watcher
     _connSub = Connectivity().onConnectivityChanged.listen((_) async {
       await _updateOffline();
-
-      // optional: pag balik internet, reload once
       if (!_offline && mounted) {
         await _loadProfessor();
         await _loadClasses();
       }
     });
 
-    // initial offline check + initial load
     _updateOffline().then((_) async {
       if (_offline) return;
       await _loadProfessor();
       await _loadClasses();
+      _setupRealtimeListener(); // ✅ Setup listener on startup
     });
 
-    //  DB is the single source of truth (but don't spam when offline)
     _tick = Timer.periodic(const Duration(minutes: 1), (_) async {
       if (!mounted) return;
-      if (_offline) return; //  skip reload while offline
+      if (_offline) return;
       await _loadClasses();
     });
   }
@@ -595,6 +590,7 @@ class _DashboardState extends State<Dashboard> {
   void dispose() {
     _tick?.cancel();
     _connSub?.cancel();
+    _classesChannel?.unsubscribe(); // ✅ Cleanup listener
     super.dispose();
   }
 
@@ -604,8 +600,8 @@ class _DashboardState extends State<Dashboard> {
       if (!mounted) return;
       setState(() {
         _offline = true;
-        _loadingProf = false; //  stop spinner
-        _profErr = null;      //  no supabase error text
+        _loadingProf = false;
+        _profErr = null;
       });
       return;
     } else {
@@ -661,8 +657,7 @@ class _DashboardState extends State<Dashboard> {
     if (d.contains('INFORMATION SYSTEMS')) return 'IS';
     if (d.contains('ENTERTAINMENT AND MULTIMEDIA COMPUTING')) return 'EMC';
     if (d.contains('INFORMATION AND COMMUNICATIONS TECHNOLOGY')) return 'CICT';
-    
-    // Fallback: take first letters of each word
+
     final words = d.split(' ');
     if (words.length > 1) {
       return words.where((w) => w.isNotEmpty && w != 'OF' && w != 'AND').map((w) => w[0]).join();
@@ -701,7 +696,6 @@ class _DashboardState extends State<Dashboard> {
     return ClipRRect(borderRadius: BorderRadius.circular(size / 2), child: Image.network(url, width: size, height: size, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Image.asset('assets/avatar.png', width: size, height: size), loadingBuilder: (context, child, loadingProgress) { if (loadingProgress == null) return child; return SizedBox(width: size, height: size, child: const Center(child: CircularProgressIndicator(strokeWidth: 2))); }));
   }
 
-  // Classcard Template
   Widget classCard(
       String id,
       String yearSection,
@@ -717,7 +711,7 @@ class _DashboardState extends State<Dashboard> {
     ) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isUpcoming = session == 'Upcoming' || session == 'Ended';
-    final s = session.trim(); // important kung may trailing spaces
+    final s = session.trim();
 
     final isEnded = s == 'Ended' || s == 'System Ended' || s == 'system ended';
     final isStarted = s == 'Session Started';
@@ -783,7 +777,7 @@ class _DashboardState extends State<Dashboard> {
                               await _loadClasses();
                             },
                             onSessionEnded: () async {
-                              await _loadClasses(); // refresh
+                              await _loadClasses();
                             },
                             classId: id,
                             courseTitle: course,
@@ -904,14 +898,12 @@ class _DashboardState extends State<Dashboard> {
 
                     onSelected: (value) async {
                       if (value == 'archive') {
-                        // 1st confirmation
                         final ok = await _confirmArchive();
                         if (!ok) return;
 
                         final s = session.trim();
                         final isStarted = s == 'Session Started';
 
-                        // 2nd confirmation + end session if started
                         if (isStarted) {
                           final ok2 = await _confirmArchiveStartedSessionEnd();
                           if (!ok2) return;
@@ -923,11 +915,9 @@ class _DashboardState extends State<Dashboard> {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(content: Text('Failed to end session: $e')),
                             );
-                            return; // stop archive if end failed
+                            return;
                           }
                         }
-
-                        // then archive
                         onArchive();
                       }
 
@@ -959,7 +949,6 @@ class _DashboardState extends State<Dashboard> {
                       }
 
                       if (value == 'share') {
-                        // show modal with classCode + copy button
                         await _showShareClassCodeModal(classCode);
                       }
                     },
@@ -979,16 +968,13 @@ class _DashboardState extends State<Dashboard> {
       context: context,
       barrierDismissible: true,
       builder: (context) {
-        final w = MediaQuery.of(context).size.width;
-
         return AlertDialog(
           backgroundColor: Colors.white,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24), // smaller dialog width
-          contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 8), // tighter inside
+          insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
+          contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
           titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
           actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-
           title: const Text(
             'Archive this class?',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
@@ -997,7 +983,6 @@ class _DashboardState extends State<Dashboard> {
             'This class will be moved to Archives.',
             style: TextStyle(fontSize: 13),
           ),
-
           actionsAlignment: MainAxisAlignment.end,
           actions: [
             SizedBox(
@@ -1071,8 +1056,6 @@ class _DashboardState extends State<Dashboard> {
 
   Future<void> _endActiveSessionForClass(String classId) async {
     final sb = Supabase.instance.client;
-
-    // get latest started session for this class
     final sessionRow = await sb
         .from('class_sessions')
         .select('id')
@@ -1082,10 +1065,10 @@ class _DashboardState extends State<Dashboard> {
         .maybeSingle();
 
     final sessionId = sessionRow?['id'] as String?;
-    if (sessionId == null) return; // nothing to end
+    if (sessionId == null) return;
 
     await sb.from('class_sessions').update({
-      'status': 'ended', // or 'system ended' if you prefer
+      'status': 'ended',
       'ended_at': DateTime.now().toIso8601String(),
     }).eq('id', sessionId);
   }
@@ -1094,10 +1077,7 @@ class _DashboardState extends State<Dashboard> {
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
-
-    final displayName = (_prof?['professor_name'] ??
-        'Professor') as String;
-
+    final displayName = (_prof?['professor_name'] ?? 'Professor') as String;
     final firstName = displayName.trim().split(' ').first;
 
     return Scaffold(
@@ -1219,17 +1199,11 @@ class _DashboardState extends State<Dashboard> {
                   if (!ok) {
                     if (!mounted) return;
                     setState(() => _offline = true);
-
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('No internet connection'),
-                        behavior: SnackBarBehavior.floating,
-                        duration: Duration(seconds: 2),
-                      ),
+                      const SnackBar(content: Text('No internet connection'), behavior: SnackBarBehavior.floating, duration: Duration(seconds: 2)),
                     );
                     return;
                   }
-
                   setState(() => _offline = false);
                   await _loadProfessor();
                   await _loadClasses();
@@ -1272,10 +1246,7 @@ class _DashboardState extends State<Dashboard> {
                     ..._classes.asMap().entries.map((entry) {
                       final i = entry.key;
                       final c = entry.value;
-
-                      final profName = _loadingProf
-                          ? 'Loading...'
-                          : ((_prof?['professor_name'] as String?) ?? 'Professor');
+                      final profName = _loadingProf ? 'Loading...' : ((_prof?['professor_name'] as String?) ?? 'Professor');
 
                       return classCard(
                         c.id,
@@ -1283,19 +1254,13 @@ class _DashboardState extends State<Dashboard> {
                         c.course,
                         c.classCode,
                         c.courseCode,
-                        profName, // always updated pag dumating si _prof
+                        profName,
                         c.room,
                         c.sched,
                         c.session,
                         screenHeight,
                             () async {
-                          // 🔹 1. Update DB
-                          await Supabase.instance.client
-                              .from('classes')
-                              .update({'archived': true})
-                              .eq('id', c.id);
-
-                          // 🔹 2. Update UI
+                          await Supabase.instance.client.from('classes').update({'archived': true}).eq('id', c.id);
                           if (!mounted) return;
                           setState(() {
                             _archivedClasses.add(c);
@@ -1304,7 +1269,6 @@ class _DashboardState extends State<Dashboard> {
                           });
                         },
                       );
-
                     }).toList(),
                   ],
                 ),
@@ -1334,11 +1298,10 @@ class _DashboardState extends State<Dashboard> {
         ),
       ),
     );
-
     try {
       await task();
     } finally {
-      if (mounted) Navigator.pop(context); // close loader
+      if (mounted) Navigator.pop(context);
     }
   }
 }

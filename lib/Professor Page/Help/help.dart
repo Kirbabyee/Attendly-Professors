@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../professor_session.dart';
 import 'FAQs.dart';
 
 class Help extends StatefulWidget {
@@ -67,11 +68,16 @@ class _HelpState extends State<Help> {
 
     try {
       final supabase = Supabase.instance.client;
-      final uid = supabase.auth.currentUser?.id;      // if you store professor_id = auth uid
-      final email = supabase.auth.currentUser?.email; // optional
+      final uid = supabase.auth.currentUser?.id;
+      final email = supabase.auth.currentUser?.email;
+
+      // ✅ Fetch professor name from session cache or DB
+      final profData = await ProfessorSession.get();
+      final userName = profData?['professor_name'] ?? 'Unknown Professor';
 
       await supabase.from('support_requests').insert({
-        'user_id': uid, // nullable okay
+        'user_id': uid,
+        'user_name': userName, // ✅ Added user_name column
         'email': email,
         'subject': subject,
         'message': message,
@@ -322,109 +328,61 @@ class _HelpState extends State<Help> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  'Subject',
-                                  style: TextStyle(
-                                    fontSize: screenHeight * .017,
+                                Text('Subject', style: TextStyle(fontSize: screenHeight * .016),),
+                                SizedBox(height: screenHeight * .008,),
+                                SizedBox(
+                                  width: screenWidth * .83,
+                                  child: TextFormField(
+                                    controller: _subjectCtrl,
+                                    style: TextStyle(fontSize: screenHeight * .016),
+                                    decoration: InputDecoration(
+                                      hintText: 'e.g. Account issue',
+                                      hintStyle: TextStyle(color: Colors.grey, fontSize: screenHeight * .016),
+                                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.grey)),
+                                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.black)),
+                                    ),
                                   ),
                                 ),
-                                SizedBox(height: 5,),
+                                SizedBox(height: screenHeight * .018,),
+                                Text('Message', style: TextStyle(fontSize: screenHeight * .016),),
+                                SizedBox(height: screenHeight * .008,),
+                                SizedBox(
+                                  width: screenWidth * .83,
+                                  child: TextFormField(
+                                    controller: _messageCtrl,
+                                    maxLines: 5,
+                                    style: TextStyle(fontSize: screenHeight * .016),
+                                    decoration: InputDecoration(
+                                      hintText: 'Describe your concern...',
+                                      hintStyle: TextStyle(color: Colors.grey, fontSize: screenHeight * .016),
+                                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.grey)),
+                                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.black)),
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(height: 20,),
                                 Center(
-                                  child: Container(
-                                      width: screenWidth * .7,
-                                      height: screenHeight * .033,
-                                      child: TextField(
-                                        controller: _subjectCtrl,
-                                        style: TextStyle(fontSize: screenHeight * .012),
-                                        textAlignVertical: TextAlignVertical.center,
-                                        decoration: InputDecoration(
-                                          hintText: 'Brief description of your issue',
-                                          hintStyle: TextStyle(fontSize: screenHeight * .012),
-                                          contentPadding: const EdgeInsets.all(5),
-                                          enabledBorder: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(8),
-                                            borderSide: const BorderSide(color: Colors.grey),
-                                          ),
-                                          focusedBorder: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(8),
-                                            borderSide: const BorderSide(color: Colors.grey),
-                                          ),
-                                        ),
-                                      )
+                                  child: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF004280),
+                                      minimumSize: Size(screenWidth * .4, 45),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                    ),
+                                    onPressed: _sending ? null : _submitSupportRequest,
+                                    child: _sending
+                                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                        : const Text('Submit', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                                   ),
-                                ),
-                                SizedBox(height: screenHeight * .023,),
-                                Text(
-                                  'Message',
-                                  style: TextStyle(
-                                      fontSize: screenHeight * .017
-                                  ),
-                                ),
-                                SizedBox(height: 5,),
-                                Center(
-                                  child: Container(
-                                      width: screenWidth * .7,
-                                      height: screenHeight * .13,
-                                      child: TextField(
-                                        controller: _messageCtrl,
-                                        textAlignVertical: TextAlignVertical.top,
-                                        keyboardType: TextInputType.multiline,
-                                        maxLines: null,
-                                        expands: true,
-                                        style: TextStyle(fontSize: screenHeight * .012),
-                                        decoration: InputDecoration(
-                                          hintText: 'Describe your issue in detail...',
-                                          hintStyle: TextStyle(fontSize: screenHeight * .012),
-                                          contentPadding: const EdgeInsets.all(5),
-                                          enabledBorder: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(8),
-                                            borderSide: const BorderSide(color: Colors.grey),
-                                          ),
-                                          focusedBorder: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(8),
-                                            borderSide: const BorderSide(color: Colors.grey),
-                                          ),
-                                        ),
-                                      )
-                                  ),
-                                ),
-                                SizedBox(height: screenHeight * .023,),
-                                Center(
-                                    child: OutlinedButton(
-                                      onPressed: _sending ? null : _submitSupportRequest,
-                                      style: OutlinedButton.styleFrom(
-                                        backgroundColor: const Color(0xFF004280),
-                                        side: const BorderSide(color: Color(0xFF004280)),
-                                      ),
-                                      child: Text(
-                                        _sending ? 'Submitting...' : 'Submit Request',
-                                        style: TextStyle(
-                                          fontSize: screenHeight * .013,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    )
                                 ),
                               ],
                             ),
-                          )
+                          ),
                         ],
                       ),
                     ),
-                    SizedBox(height: screenHeight * .023,),
-                    Text(
-                      'Support Hours\n'
-                          'Monday - Friday: 8:00 AM - 6:00 PM\n'
-                          'Saturday - Sunday: Closed\n'
-                          'For urgent issues outside business hours\n'
-                          'please email support@university.edu',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: screenHeight * .015,
-                        color: Colors.grey,
-                      ),
-                    ),
-                    SizedBox(height: screenHeight * .023,),
+                    const SizedBox(height: 30),
                   ],
                 ),
               ),

@@ -378,7 +378,7 @@ class _LoginState extends State<Login> {
                             if (profRow == null) {
                               await supabase.auth.signOut();
                               if (!mounted) return;
-                              Navigator.pop(context);
+                              Navigator.pop(context); // close loading
 
                               setState(() {
                                 _loginError = 'Invalid email or password';
@@ -392,7 +392,7 @@ class _LoginState extends State<Login> {
                             if (isArchived) {
                               await supabase.auth.signOut();
                               if (!mounted) return;
-                              Navigator.pop(context);
+                              Navigator.pop(context); // close loading
 
                               setState(() {
                                 _loginError = 'Invalid email or password'; // same as wrong login
@@ -406,7 +406,7 @@ class _LoginState extends State<Login> {
                             if (status == 'inactive') {
                               await supabase.auth.signOut();
                               if (!mounted) return;
-                              Navigator.pop(context);
+                              Navigator.pop(context); // close loading
 
                               setState(() {
                                 _loginError =
@@ -429,8 +429,6 @@ class _LoginState extends State<Login> {
                             ProfessorSession.clear();
                             await ProfessorSession.get(force: true);
 
-                            if (mounted) Navigator.pop(context);
-
                             final rawTerms = profRow['terms_conditions'];
                             final terms = (rawTerms is num) ? rawTerms.toInt() : int.tryParse('$rawTerms') ?? 0;
 
@@ -444,15 +442,16 @@ class _LoginState extends State<Login> {
                             if (twoFA) {
                               // 1) send OTP using email
                               try {
-                                final res = await supabase.functions.invoke(
+                                await supabase.functions.invoke(
                                   'send-2fa-otp',
                                   body: {'email': emailToUse},
                                 );
-
-                                debugPrint(res.data);
                               } catch (_) {
                                 // ok lang, user can resend inside modal
                               }
+
+                              if (!mounted) return;
+                              Navigator.pop(context); // close loading before opening 2FA modal
 
                               // 2) open OTP modal
                               final verified = await TwoFAVerificationPage.open(
@@ -485,12 +484,18 @@ class _LoginState extends State<Login> {
                                 Navigator.of(context).pushNamedAndRemoveUntil('/login', (r) => false);
                                 return;
                               }
+                              
+                              // Re-open loading if passed 2FA but still need to check terms/maintenance
+                              showDialog(
+                                context: context,
+                                barrierDismissible: false,
+                                builder: (_) => const Center(child: CircularProgressIndicator()),
+                              );
                             }
 
                             // terms after 2FA
                             if (terms != 1) {
-                              // optional: you can still sync tokens here if you consider them "logged in"
-                              // but safest: do NOT register token until fully accepted terms
+                              if (mounted) Navigator.pop(context); // close loading
                               Navigator.of(context).pushNamedAndRemoveUntil('/terms_conditions', (r) => false);
                               return;
                             }
@@ -514,7 +519,7 @@ class _LoginState extends State<Login> {
                                   .maybeSingle();
 
                               if (maintenanceRow != null && maintenanceRow['is_active'] == true) {
-                                if (!mounted) return;
+                                if (mounted) Navigator.pop(context); // close loading
                                 Navigator.of(context).pushAndRemoveUntil(
                                   MaterialPageRoute(builder: (_) => const MaintenanceGuard()),
                                       (route) => false,
@@ -525,13 +530,12 @@ class _LoginState extends State<Login> {
                               debugPrint("Maintenance check error: $e");
                             }
 
+                            if (mounted) Navigator.pop(context); // Final close of loading
                             Navigator.of(context).pushNamedAndRemoveUntil('/mainshell', (r) => false);
                             return;
                           } on AuthException catch (e) {
                             if (!mounted) return;
-                            Navigator.pop(context);
-
-                            final msg = e.message.toLowerCase();
+                            Navigator.pop(context); // close loading
 
                             setState(() {
                               _loginError = 'Invalid email or password';
@@ -564,7 +568,7 @@ class _LoginState extends State<Login> {
                             _formKey.currentState!.validate();
                           } catch (e) {
                             if (!mounted) return;
-                            Navigator.pop(context);
+                            Navigator.pop(context); // close loading
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(content: Text('Login failed. $e')),
                             );
