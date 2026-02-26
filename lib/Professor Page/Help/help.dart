@@ -105,19 +105,25 @@ class _HelpState extends State<Help> {
 
   List<FAQs> faqs = [
     FAQs(
-      category: 'Network',
-      question: 'How do I mark my attendance?',
-      answer: 'To mark attendance, you need to:\n'
-          '1. Be connected to the classroom Wi-Fi network.\n'
-          '2. Select your class.\n'
-          '3. Complete face verification.\n'
-          '4. Submit your attendance.\n'
-          'Make sure you are physically present in the classroom.',
+      category: 'Class Session',
+      question: 'Why I can\'t start my class session?',
+      answer: 'Make sure you have internet. And start class button will be enabled 10 minutes before the schedule.'
     ),
-    FAQs(category: 'Attendance', question: 'Why is my face verification failing?', answer: 'Face verification may fail due to poor lighting, camera obstruction, or if you\'re wearing sunglasses. Make sure your face is clearly visible and well-lit.'),
-    FAQs(category: 'Network', question: 'What if I can’t connect to the  classroom Wi-Fi?', answer: 'Ensure Wi-Fi is enabled on your device and you\'re selecting the correct network. If issues persist, contact your instructor or IT support. The app requires classroom network connection for security purposes.'),
-    FAQs(category: 'Notification', question: 'Why am I not receiving class reminders?', answer: 'Check that notifications are enabled in both the app settings and your device system settings. Also verify that you have set up class reminders with appropriate timing.'),
-    FAQs(category: 'Account', question: 'How do I reset my password?', answer: 'Go to Settings > Security & Privacy > Change Password. You will need to enter your current password and then create a new one. Make sure your new password is strong and unique.'),
+    FAQs(
+      category: 'Attendance History',
+      question: 'Why I can\'t see my attendance history?',
+      answer: 'Make sure you have at least a student enrolled to your class'
+    ),
+    FAQs(
+      category: 'Notification',
+      question: 'Why am I not receiving class reminders?',
+      answer: 'Check that notifications are enabled in both the app settings and your device system settings. Also verify that you have set up class reminders with appropriate timing.'
+    ),
+    FAQs(
+      category: 'Account',
+      question: 'How do I reset my password?',
+      answer: 'Go to Settings > Security & Privacy > Change Password. You will need to enter your current password and then create a new one. Make sure your new password is strong and unique.'
+    ),
   ];
 
   Widget helpCard({
@@ -301,10 +307,10 @@ class _HelpState extends State<Help> {
                     // Contact Support
                     Container(
                       width: screenWidth * .9,
-                      padding: EdgeInsets.all(20),
+                      padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadiusGeometry.circular(8),
+                        borderRadius: BorderRadius.circular(8),
                         boxShadow: const [
                           BoxShadow(
                             color: Colors.black12,
@@ -328,61 +334,109 @@ class _HelpState extends State<Help> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('Subject', style: TextStyle(fontSize: screenHeight * .016),),
-                                SizedBox(height: screenHeight * .008,),
-                                SizedBox(
-                                  width: screenWidth * .83,
-                                  child: TextFormField(
-                                    controller: _subjectCtrl,
-                                    style: TextStyle(fontSize: screenHeight * .016),
-                                    decoration: InputDecoration(
-                                      hintText: 'e.g. Account issue',
-                                      hintStyle: TextStyle(color: Colors.grey, fontSize: screenHeight * .016),
-                                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.grey)),
-                                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.black)),
-                                    ),
+                                Text(
+                                  'Subject',
+                                  style: TextStyle(
+                                    fontSize: screenHeight * .017,
                                   ),
                                 ),
-                                SizedBox(height: screenHeight * .018,),
-                                Text('Message', style: TextStyle(fontSize: screenHeight * .016),),
-                                SizedBox(height: screenHeight * .008,),
-                                SizedBox(
-                                  width: screenWidth * .83,
-                                  child: TextFormField(
-                                    controller: _messageCtrl,
-                                    maxLines: 5,
-                                    style: TextStyle(fontSize: screenHeight * .016),
-                                    decoration: InputDecoration(
-                                      hintText: 'Describe your concern...',
-                                      hintStyle: TextStyle(color: Colors.grey, fontSize: screenHeight * .016),
-                                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.grey)),
-                                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.black)),
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(height: 20,),
+                                const SizedBox(height: 5,),
                                 Center(
-                                  child: ElevatedButton(
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFF004280),
-                                      minimumSize: Size(screenWidth * .4, 45),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                    ),
-                                    onPressed: _sending ? null : _submitSupportRequest,
-                                    child: _sending
-                                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                                        : const Text('Submit', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                  child: SizedBox(
+                                      width: screenWidth * .7,
+                                      height: screenHeight * .033,
+                                      child: TextField(
+                                        controller: _subjectCtrl,
+                                        style: TextStyle(fontSize: screenHeight * .012),
+                                        textAlignVertical: TextAlignVertical.center,
+                                        decoration: InputDecoration(
+                                          hintText: 'Brief description of your issue',
+                                          hintStyle: TextStyle(fontSize: screenHeight * .012),
+                                          contentPadding: const EdgeInsets.all(5),
+                                          enabledBorder: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(8),
+                                            borderSide: const BorderSide(color: Colors.grey),
+                                          ),
+                                          focusedBorder: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(8),
+                                            borderSide: const BorderSide(color: Colors.grey),
+                                          ),
+                                        ),
+                                      )
                                   ),
+                                ),
+                                SizedBox(height: screenHeight * .023,),
+                                Text(
+                                  'Message',
+                                  style: TextStyle(
+                                      fontSize: screenHeight * .017
+                                  ),
+                                ),
+                                const SizedBox(height: 5,),
+                                Center(
+                                  child: SizedBox(
+                                      width: screenWidth * .7,
+                                      height: screenHeight * .13,
+                                      child: TextField(
+                                        controller: _messageCtrl,
+                                        textAlignVertical: TextAlignVertical.top,
+                                        keyboardType: TextInputType.multiline,
+                                        maxLines: null,
+                                        expands: true,
+                                        style: TextStyle(fontSize: screenHeight * .012),
+                                        decoration: InputDecoration(
+                                          hintText: 'Describe your issue in detail...',
+                                          hintStyle: TextStyle(fontSize: screenHeight * .012),
+                                          contentPadding: const EdgeInsets.all(5),
+                                          enabledBorder: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(8),
+                                            borderSide: const BorderSide(color: Colors.grey),
+                                          ),
+                                          focusedBorder: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(8),
+                                            borderSide: const BorderSide(color: Colors.grey),
+                                          ),
+                                        ),
+                                      )
+                                  ),
+                                ),
+                                SizedBox(height: screenHeight * .023,),
+                                Center(
+                                    child: OutlinedButton(
+                                      onPressed: _sending ? null : _submitSupportRequest,
+                                      style: OutlinedButton.styleFrom(
+                                        backgroundColor: const Color(0xFF004280),
+                                        side: const BorderSide(color: Color(0xFF004280)),
+                                      ),
+                                      child: Text(
+                                        _sending ? 'Submitting...' : 'Submit Request',
+                                        style: TextStyle(
+                                          fontSize: screenHeight * .013,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    )
                                 ),
                               ],
                             ),
-                          ),
+                          )
                         ],
                       ),
                     ),
-                    const SizedBox(height: 30),
+                    SizedBox(height: screenHeight * .023,),
+                    Text(
+                      'Support Hours\n'
+                          'Monday - Friday: 8:00 AM - 6:00 PM\n'
+                          'Saturday - Sunday: Closed\n'
+                          'For urgent issues outside business hours\n'
+                          'please email support@university.edu',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: screenHeight * .015,
+                        color: Colors.grey,
+                      ),
+                    ),
+                    SizedBox(height: screenHeight * .023,),
                   ],
                 ),
               ),

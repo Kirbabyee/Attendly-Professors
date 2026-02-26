@@ -111,7 +111,7 @@ class _FloatingToastState extends State<_FloatingToast>
 class _DashboardState extends State<Dashboard> {
   bool _offline = false;
   StreamSubscription? _connSub;
-  RealtimeChannel? _classesChannel; // ✅ For realtime listener
+  RealtimeChannel? _classesChannel; // For realtime listener
 
   Future<bool> _hasInternet() async {
     final conn = await Connectivity().checkConnectivity();
@@ -125,7 +125,7 @@ class _DashboardState extends State<Dashboard> {
     setState(() => _offline = !ok);
   }
 
-  // ✅ INITIALIZE REALTIME LISTENER
+  // INITIALIZE REALTIME LISTENER
   void _setupRealtimeListener() {
     final uid = Supabase.instance.client.auth.currentUser?.id;
     if (uid == null) return;
@@ -576,7 +576,7 @@ class _DashboardState extends State<Dashboard> {
       if (_offline) return;
       await _loadProfessor();
       await _loadClasses();
-      _setupRealtimeListener(); // ✅ Setup listener on startup
+      _setupRealtimeListener(); // Setup listener on startup
     });
 
     _tick = Timer.periodic(const Duration(minutes: 1), (_) async {
@@ -590,7 +590,7 @@ class _DashboardState extends State<Dashboard> {
   void dispose() {
     _tick?.cancel();
     _connSub?.cancel();
-    _classesChannel?.unsubscribe(); // ✅ Cleanup listener
+    _classesChannel?.unsubscribe(); // Cleanup listener
     super.dispose();
   }
 
@@ -626,68 +626,6 @@ class _DashboardState extends State<Dashboard> {
         _loadingProf = false;
       });
     }
-  }
-
-  Widget textBold(tag, name, double screenHeight, {bool isEmail = false}) {
-    return Text.rich(
-      TextSpan(
-        text: tag,
-        style: TextStyle(fontSize: screenHeight * .015),
-        children: [
-          TextSpan(
-            text: name,
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: screenHeight * .015,
-              overflow: isEmail ? TextOverflow.ellipsis : null,
-            ),
-          ),
-        ],
-      ),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-    );
-  }
-
-  String _getDeptAbbreviation(String? dept) {
-    if (dept == null || dept.isEmpty) return '-';
-    final d = dept.trim().toUpperCase();
-    if (d.contains('INFORMATION TECHNOLOGY')) return 'IT';
-    if (d.contains('COMPUTER SCIENCE')) return 'CS';
-    if (d.contains('INFORMATION SYSTEMS')) return 'IS';
-    if (d.contains('ENTERTAINMENT AND MULTIMEDIA COMPUTING')) return 'EMC';
-    if (d.contains('INFORMATION AND COMMUNICATIONS TECHNOLOGY')) return 'CICT';
-
-    final words = d.split(' ');
-    if (words.length > 1) {
-      return words.where((w) => w.isNotEmpty && w != 'OF' && w != 'AND').map((w) => w[0]).join();
-    }
-    return d;
-  }
-
-  Widget _professorCard(double screenHeight, double screenWidth) {
-    if (_loadingProf) {
-      return const SizedBox(
-        height: 40,
-        child: Center(child: CircularProgressIndicator()),
-      );
-    }
-    if (_profErr != null) {
-      return Text('Error: $_profErr', style: TextStyle(fontSize: screenHeight * .013, color: Colors.red));
-    }
-    if (_prof == null) {
-      return Text('No professor record found', style: TextStyle(fontSize: screenHeight * .013));
-    }
-    return Expanded(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          textBold('Name: ', '${_prof?['professor_name'] ?? '-'}', screenHeight),
-          textBold('Dept: ', _getDeptAbbreviation(_prof?['department']), screenHeight),
-          textBold('Email: ', '${_prof?['email'] ?? '-'}', screenHeight, isEmail: true),
-        ],
-      ),
-    );
   }
 
   Widget _avatarWidget(double size) {
@@ -1085,7 +1023,7 @@ class _DashboardState extends State<Dashboard> {
         child: Column(
           children: [
             Container(
-              height: screenHeight * .30,
+              height: screenHeight * .16, // Reduced height since info is gone
               decoration: const BoxDecoration(
                 color: Color(0xFF004280),
                 borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
@@ -1172,22 +1110,7 @@ class _DashboardState extends State<Dashboard> {
                       ],
                     ),
                   ),
-                  SizedBox(height: screenHeight > 700 ? 20 : 12),
-                  Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 10),
-                    padding: EdgeInsets.all(screenHeight * .022),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Row(
-                      children: [
-                        _avatarWidget(screenWidth * .18),
-                        SizedBox(width: screenWidth * .035),
-                        _professorCard(screenHeight, screenWidth),
-                      ],
-                    ),
-                  ),
+                  // Card removed
                 ],
               ),
             ),

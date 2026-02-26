@@ -13,20 +13,6 @@ class ChangePassword extends StatefulWidget {
 }
 
 class _ChangePasswordState extends State<ChangePassword> {
-  String? validateStrongPassword(String? value) {
-    final pw = (value ?? '').trim();
-
-    if (pw.isEmpty) return 'Password is required';
-    if (pw.length < 8) return 'Minimum 8 characters';
-    if (!RegExp(r'[A-Z]').hasMatch(pw)) return 'Must contain at least 1 uppercase letter';
-    if (!RegExp(r'[a-z]').hasMatch(pw)) return 'Must contain at least 1 lowercase letter';
-    if (!RegExp(r'[0-9]').hasMatch(pw)) return 'Must contain at least 1 number';
-    if (!RegExp(r'[!@#$%^&*(),.?":{}|<>_\-+=/\\[\]~`]').hasMatch(pw)) {
-      return 'Must contain at least 1 special character';
-    }
-    return null;
-  }
-
   final supabase = Supabase.instance.client;
 
   // step control
@@ -49,12 +35,45 @@ class _ChangePasswordState extends State<ChangePassword> {
   final _confirmPwController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    _newPwController.addListener(_validateInputs);
+    _confirmPwController.addListener(_validateInputs);
+  }
+
+  @override
   void dispose() {
+    _newPwController.removeListener(_validateInputs);
+    _confirmPwController.removeListener(_validateInputs);
     _currentPwController.dispose();
     _newPwController.dispose();
     _confirmPwController.dispose();
     super.dispose();
   }
+
+  // Password validation flags
+  bool _hasMinLength = false;
+  bool _hasUppercase = false;
+  bool _hasLowercase = false;
+  bool _hasNumber = false;
+  bool _hasSpecialChar = false;
+  bool _passwordsMatch = false;
+
+  void _validateInputs() {
+    final pw = _newPwController.text.trim();
+    final confirmPw = _confirmPwController.text.trim();
+    setState(() {
+      _hasMinLength = pw.length >= 8;
+      _hasUppercase = RegExp(r'[A-Z]').hasMatch(pw);
+      _hasLowercase = RegExp(r'[a-z]').hasMatch(pw);
+      _hasNumber = RegExp(r'[0-9]').hasMatch(pw);
+      _hasSpecialChar = RegExp(r'[!@#$%^&*(),.?":{}|<>_\-+=/\\[\]~`]').hasMatch(pw);
+      _passwordsMatch = confirmPw.isNotEmpty && confirmPw == pw;
+    });
+  }
+
+  bool get _isPasswordStrong => 
+      _hasMinLength && _hasUppercase && _hasLowercase && _hasNumber && _hasSpecialChar;
 
   void _toast(String msg) {
     if (!mounted) return;
@@ -107,11 +126,6 @@ class _ChangePasswordState extends State<ChangePassword> {
       'prof-change-password-otp',
       body: {'professor_id': user.id},
     );
-
-    print('code sent');
-
-    debugPrint("OTP SEND status: ${res.status}");
-    debugPrint("OTP SEND data: ${res.data}");
 
     if (res.status != 200) {
       final msg = (res.data is Map ? (res.data['message'] ?? res.data['error']) : null)
@@ -270,9 +284,6 @@ class _ChangePasswordState extends State<ChangePassword> {
     );
   }
 
-  // ======================
-  // STEP 1: Confirm current password
-  // ======================
   Widget _currentPasswordStep() {
     final w = MediaQuery.of(context).size.width;
 
@@ -371,9 +382,6 @@ class _ChangePasswordState extends State<ChangePassword> {
     );
   }
 
-  // ======================
-  // STEP 2: New password + confirm
-  // ======================
   Widget _newPasswordStep() {
     final w = MediaQuery.of(context).size.width;
 
@@ -411,8 +419,21 @@ class _ChangePasswordState extends State<ChangePassword> {
                     icon: Icon(showNew ? Icons.visibility : Icons.visibility_off, size: 18),
                   ),
                 ),
-                validator: validateStrongPassword,
+                validator: (value) {
+                  final v = (value ?? '').trim();
+                  if (v == _currentPwController.text.trim()) return 'New password must be different';
+                  return null;
+                },
               ),
+              const SizedBox(height: 12),
+
+              // ✅ Password Requirement List
+              _buildRequirementRow('Minimum 8 characters', _hasMinLength),
+              _buildRequirementRow('At least 1 uppercase letter', _hasUppercase),
+              _buildRequirementRow('At least 1 lowercase letter', _hasLowercase),
+              _buildRequirementRow('At least 1 number', _hasNumber),
+              _buildRequirementRow('At least 1 special character', _hasSpecialChar),
+
               const SizedBox(height: 12),
 
               const Text('Confirm Password', style: TextStyle(fontSize: 12)),
@@ -428,15 +449,10 @@ class _ChangePasswordState extends State<ChangePassword> {
                     icon: Icon(showConfirm ? Icons.visibility : Icons.visibility_off, size: 18),
                   ),
                 ),
-                validator: (value) {
-                  final v = (value ?? '').trim();
-                  if (v.isEmpty) return 'Confirm your password';
-                  if (v != _newPwController.text.trim()) return 'Passwords do not match';
-                  // optional: block same as current
-                  if (v == _currentPwController.text.trim()) return 'New password must be different';
-                  return null;
-                },
               ),
+              const SizedBox(height: 6),
+              // ✅ Passwords match validation
+              _buildRequirementRow('Passwords match', _passwordsMatch),
             ],
           ),
         ),
@@ -452,7 +468,7 @@ class _ChangePasswordState extends State<ChangePassword> {
               side: BorderSide.none,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
-            onPressed: saving
+            onPressed: (saving || !_isPasswordStrong || !_passwordsMatch)
                 ? null
                 : () async {
               if (!_newPwFormKey.currentState!.validate()) return;
@@ -461,11 +477,9 @@ class _ChangePasswordState extends State<ChangePassword> {
 
               setState(() => saving = true);
               try {
-                // 1) send OTP to CURRENT EMAIL
                 await _sendOtpForChangePassword();
                 if (!mounted) return;
 
-                // 2) show OTP modal (same component mo from change email)
                 final currentEmail = supabase.auth.currentUser?.email ?? '';
 
                 final verified = await _showOtpModal(
@@ -508,6 +522,29 @@ class _ChangePasswordState extends State<ChangePassword> {
       ],
     );
   }
+
+  Widget _buildRequirementRow(String text, bool isMet) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Icon(
+            isMet ? Icons.check_circle : Icons.cancel,
+            color: isMet ? Colors.green : Colors.red,
+            size: 16,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 11,
+              color: isMet ? Colors.green : Colors.red,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 
@@ -535,7 +572,7 @@ class _OtpDialogState extends State<_OtpDialog> {
   String maskEmail(String email) {
     final e = email.trim();
     final at = e.indexOf('@');
-    if (at <= 1) return email; // fallback
+    if (at <= 1) return email; 
 
     final local = e.substring(0, at);
     final domain = e.substring(at);
@@ -676,7 +713,7 @@ class _OtpDialogState extends State<_OtpDialog> {
                 onChanged: (_) {
                   if (_otpError != null) setState(() => _otpError = null);
                 },
-                decoration: InputDecoration(
+                decoration: const InputDecoration(
                   border: InputBorder.none,
                   hintText: '000000',
                 ),
@@ -736,7 +773,6 @@ class _OtpDialogState extends State<_OtpDialog> {
                         if (!mounted) return;
                         setState(() => _otpError = msg.isEmpty ? 'Invalid OTP' : msg);
 
-                        // optional: haptic feedback
                         HapticFeedback.mediumImpact();
                       } finally {
                         if (mounted) setState(() => _verifying = false);
@@ -765,7 +801,6 @@ class _OtpDialogState extends State<_OtpDialog> {
                   await widget.onResend();
                   if (!mounted) return;
                   _startCooldown(widget.cooldownSeconds);
-                  // Show Success Modal instead of SnackBar
                   _showSuccessModal();
                 } catch (e) {
                   if (!mounted) return;

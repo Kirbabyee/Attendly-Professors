@@ -23,29 +23,47 @@ class _NewPasswordState extends State<NewPassword> {
   final _newPasswordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
-  // server error for OTP dialog
   String? _otpError;
+
+  // Password validation flags
+  bool _hasMinLength = false;
+  bool _hasUppercase = false;
+  bool _hasLowercase = false;
+  bool _hasNumber = false;
+  bool _hasSpecialChar = false;
+  bool _passwordsMatch = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _newPasswordController.addListener(_validateInputs);
+    _confirmPasswordController.addListener(_validateInputs);
+  }
 
   @override
   void dispose() {
+    _newPasswordController.removeListener(_validateInputs);
+    _confirmPasswordController.removeListener(_validateInputs);
     _newPasswordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
   }
 
-  // Strong password (same as earlier)
-  String? validateStrongPassword(String? value) {
-    final pw = (value ?? '').trim();
-    if (pw.isEmpty) return 'Password is required';
-    if (pw.length < 8) return 'Minimum 8 characters';
-    if (!RegExp(r'[A-Z]').hasMatch(pw)) return 'Must contain at least 1 uppercase letter';
-    if (!RegExp(r'[a-z]').hasMatch(pw)) return 'Must contain at least 1 lowercase letter';
-    if (!RegExp(r'[0-9]').hasMatch(pw)) return 'Must contain at least 1 number';
-    if (!RegExp(r'[!@#$%^&*(),.?":{}|<>_\-+=/\\[\]~`]').hasMatch(pw)) {
-      return 'Must contain at least 1 special character';
-    }
-    return null;
+  void _validateInputs() {
+    final pw = _newPasswordController.text.trim();
+    final confirm = _confirmPasswordController.text.trim();
+    setState(() {
+      _hasMinLength = pw.length >= 8;
+      _hasUppercase = RegExp(r'[A-Z]').hasMatch(pw);
+      _hasLowercase = RegExp(r'[a-z]').hasMatch(pw);
+      _hasNumber = RegExp(r'[0-9]').hasMatch(pw);
+      _hasSpecialChar = RegExp(r'[!@#$%^&*(),.?":{}|<>_\-+=/\\[\]~`]').hasMatch(pw);
+      _passwordsMatch = confirm.isNotEmpty && pw == confirm;
+    });
   }
+
+  bool get _isPasswordStrong =>
+      _hasMinLength && _hasUppercase && _hasLowercase && _hasNumber && _hasSpecialChar;
 
   void _toast(String msg) {
     if (!mounted) return;
@@ -70,21 +88,11 @@ class _NewPasswordState extends State<NewPassword> {
     );
   }
 
-  // ============================
-  // EDGE: send OTP (forgot)
-  // ============================
-  Future<void> _sendOtp({
-    required String email,
-  }) async {
+  Future<void> _sendOtp({required String email}) async {
     final res = await supabase.functions.invoke(
       'prof-forgot-otp-send',
-      body: {
-        'email': email,
-      },
+      body: {'email': email},
     );
-
-    debugPrint("OTP SEND status: ${res.status}");
-    debugPrint("OTP SEND data: ${res.data}");
 
     if (res.status != 200) {
       final msg = (res.data is Map ? (res.data['message'] ?? res.data['error']) : null) ??
@@ -93,9 +101,6 @@ class _NewPasswordState extends State<NewPassword> {
     }
   }
 
-  // ============================
-  // EDGE: verify OTP + reset pw
-  // ============================
   Future<void> _verifyOtpAndReset({
     required String email,
     required String otp,
@@ -110,9 +115,6 @@ class _NewPasswordState extends State<NewPassword> {
       },
     );
 
-    debugPrint("OTP VERIFY status: ${res.status}");
-    debugPrint("OTP VERIFY data: ${res.data}");
-
     if (res.status != 200) {
       final msg = (res.data is Map ? (res.data['message'] ?? res.data['error']) : null) ??
           'OTP verification failed';
@@ -120,11 +122,8 @@ class _NewPasswordState extends State<NewPassword> {
     }
   }
 
-  // ============================
-  // OTP Dialog
-  // ============================
   Future<bool> _showOtpModal({
-    required String email, // add
+    required String email,
     required Future<void> Function() onResend,
     required Future<void> Function(String otp) onVerify,
     int cooldownSeconds = 60,
@@ -133,7 +132,7 @@ class _NewPasswordState extends State<NewPassword> {
       context: context,
       barrierDismissible: false,
       builder: (_) => _OtpDialog(
-        email: email, // pass
+        email: email,
         cooldownSeconds: cooldownSeconds,
         onResend: onResend,
         onVerify: (otp) async {
@@ -149,9 +148,7 @@ class _NewPasswordState extends State<NewPassword> {
     return ok == true;
   }
 
-
   Future<void> _handleResetFlow() async {
-    // get args from previous screen (ForgotPassword)
     final args = ModalRoute.of(context)?.settings.arguments as Map? ?? {};
     final email = (args['email'] ?? '').toString().trim().toLowerCase();
 
@@ -160,20 +157,15 @@ class _NewPasswordState extends State<NewPassword> {
       return;
     }
 
-    if (!_formKey.currentState!.validate()) return;
-
     final newPw = _newPasswordController.text.trim();
 
     setState(() => saving = true);
     try {
-      // 1) send OTP
       await _sendOtp(email: email);
-
       if (!mounted) return;
 
-      // 2) open OTP modal + verify
       final verified = await _showOtpModal(
-        email: email, // add
+        email: email,
         cooldownSeconds: 60,
         onResend: () => _sendOtp(email: email),
         onVerify: (otp) => _verifyOtpAndReset(
@@ -183,11 +175,8 @@ class _NewPasswordState extends State<NewPassword> {
         ),
       );
 
+      if (!mounted || !verified) return;
 
-      if (!mounted) return;
-      if (!verified) return;
-
-      // 3) success -> go login
       await _showSuccess();
       if (!mounted) return;
 
@@ -240,152 +229,153 @@ class _NewPasswordState extends State<NewPassword> {
             ],
           ),
           Center(
-            child: Column(
-              children: [
-                SizedBox(height: !isKeyboard ? screenHeight * .24 : screenHeight * .16),
-                Image.asset(width: screenWidth * .9, 'assets/logo.png'),
-                SizedBox(height: screenHeight * .013),
-                Text(
-                  'Change Password',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: screenHeight * .017),
-                ),
-                SizedBox(height: screenHeight * .048),
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  SizedBox(height: !isKeyboard ? screenHeight * .05 : screenHeight * .0),
+                  Text(
+                    'Forgot Password',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: screenHeight * .02),
+                  ),
+                  SizedBox(height: screenHeight * .018),
 
-                Form(
-                  key: _formKey,
-                  autovalidateMode: AutovalidateMode.onUserInteraction, // ✅ Real-time validation
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('New Password', style: TextStyle(fontSize: screenHeight * .017)),
-                      SizedBox(height: screenHeight * .008),
-                      SizedBox(
-                        height: screenHeight * .085, // Increase height to accommodate real-time errors
-                        width: screenWidth * .83,
-                        child: TextFormField(
-                          obscureText: showPassword,
-                          controller: _newPasswordController,
-                          style: TextStyle(fontSize: screenHeight * .017),
-                          keyboardType: TextInputType.text,
-                          onChanged: (_) {
-                            if (_confirmPasswordController.text.isNotEmpty) {
-                              _formKey.currentState!.validate();
-                            }
-                          },
-                          decoration: InputDecoration(
-                            errorMaxLines: 2,
-                            errorStyle: TextStyle(fontSize: screenHeight * .013, height: 1.2),
-                            hintText: 'Enter new password',
-                            hintStyle: TextStyle(color: Colors.grey, fontSize: screenHeight * .017),
-                            prefixIcon: Icon(Icons.lock_outline, color: Colors.grey, size: screenHeight * .023),
-                            suffixIcon: IconButton(
-                              onPressed: () => setState(() => showPassword = !showPassword),
-                              icon: Icon(!showPassword ? Icons.visibility : Icons.visibility_off, size: screenHeight * .023),
-                            ),
-                            contentPadding: EdgeInsets.symmetric(
-                              horizontal: screenHeight * .013,
-                              vertical: screenHeight * .013,
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: const BorderSide(color: Colors.grey),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: const BorderSide(color: Colors.black),
-                            ),
-                            errorBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: const BorderSide(color: Colors.red),
-                            ),
-                            focusedErrorBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: const BorderSide(color: Colors.red),
+                  Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('New Password', style: TextStyle(fontSize: screenHeight * .017)),
+                        SizedBox(height: screenHeight * .008),
+                        SizedBox(
+                          width: screenWidth * .83,
+                          child: TextFormField(
+                            obscureText: showPassword,
+                            controller: _newPasswordController,
+                            style: TextStyle(fontSize: screenHeight * .017),
+                            keyboardType: TextInputType.text,
+                            decoration: InputDecoration(
+                              hintText: 'Enter new password',
+                              hintStyle: TextStyle(color: Colors.grey, fontSize: screenHeight * .017),
+                              prefixIcon: Icon(Icons.lock_outline, color: Colors.grey, size: screenHeight * .023),
+                              suffixIcon: IconButton(
+                                onPressed: () => setState(() => showPassword = !showPassword),
+                                icon: Icon(!showPassword ? Icons.visibility : Icons.visibility_off, size: screenHeight * .023),
+                              ),
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: screenHeight * .013,
+                                vertical: screenHeight * .013,
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: const BorderSide(color: Colors.grey),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: const BorderSide(color: Colors.black),
+                              ),
                             ),
                           ),
-                          validator: validateStrongPassword,
                         ),
-                      ),
 
-                      SizedBox(height: screenHeight * .018),
+                        const SizedBox(height: 12),
+                        // Requirements before confirm field
+                        _buildRequirementRow('Minimum 8 characters', _hasMinLength),
+                        _buildRequirementRow('At least 1 uppercase letter', _hasUppercase),
+                        _buildRequirementRow('At least 1 lowercase letter', _hasLowercase),
+                        _buildRequirementRow('At least 1 number', _hasNumber),
+                        _buildRequirementRow('At least 1 special character', _hasSpecialChar),
 
-                      Text('Confirm Password', style: TextStyle(fontSize: screenHeight * .017)),
-                      const SizedBox(height: 5),
-                      SizedBox(
-                        height: screenHeight * .085, // Increase height to accommodate real-time errors
-                        width: screenWidth * .83,
-                        child: TextFormField(
-                          obscureText: showPassword,
-                          controller: _confirmPasswordController,
-                          style: TextStyle(fontSize: screenHeight * .017),
-                          keyboardType: TextInputType.text,
-                          decoration: InputDecoration(
-                            errorMaxLines: 2,
-                            errorStyle: TextStyle(fontSize: screenHeight * .013, height: 1.2),
-                            hintText: 'Confirm your password',
-                            hintStyle: TextStyle(color: Colors.grey, fontSize: screenHeight * .017),
-                            prefixIcon: Icon(Icons.lock_outline, color: Colors.grey, size: screenHeight * .023),
-                            suffixIcon: IconButton(
-                              onPressed: () => setState(() => showPassword = !showPassword),
-                              icon: Icon(!showPassword ? Icons.visibility : Icons.visibility_off, size: screenHeight * .023),
-                            ),
-                            contentPadding: EdgeInsets.symmetric(
-                              horizontal: screenHeight * .013,
-                              vertical: screenHeight * .013,
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: const BorderSide(color: Colors.grey),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: const BorderSide(color: Colors.black),
-                            ),
-                            errorBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: const BorderSide(color: Colors.red),
-                            ),
-                            focusedErrorBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: const BorderSide(color: Colors.red),
+                        SizedBox(height: screenHeight * .018),
+
+                        Text('Confirm Password', style: TextStyle(fontSize: screenHeight * .017)),
+                        const SizedBox(height: 5),
+                        SizedBox(
+                          width: screenWidth * .83,
+                          child: TextFormField(
+                            obscureText: showPassword,
+                            controller: _confirmPasswordController,
+                            style: TextStyle(fontSize: screenHeight * .017),
+                            keyboardType: TextInputType.text,
+                            decoration: InputDecoration(
+                              hintText: 'Confirm your password',
+                              hintStyle: TextStyle(color: Colors.grey, fontSize: screenHeight * .017),
+                              prefixIcon: Icon(Icons.lock_outline, color: Colors.grey, size: screenHeight * .023),
+                              suffixIcon: IconButton(
+                                onPressed: () => setState(() => showPassword = !showPassword),
+                                icon: Icon(!showPassword ? Icons.visibility : Icons.visibility_off, size: screenHeight * .023),
+                              ),
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: screenHeight * .013,
+                                vertical: screenHeight * .013,
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: const BorderSide(color: Colors.grey),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: const BorderSide(color: Colors.black),
+                              ),
                             ),
                           ),
-                          validator: (value) {
-                            final v = (value ?? '').trim();
-                            if (v.isEmpty) return 'Confirm password is required';
-                            if (v != _newPasswordController.text.trim()) return 'Password must match';
-                            return null;
-                          },
+                        ),
+                        const SizedBox(height: 6),
+                        _buildRequirementRow('Passwords match', _passwordsMatch),
+                      ],
+                    ),
+                  ),
+
+                  SizedBox(height: screenHeight * .073),
+
+                  if (!isKeyboard)
+                    OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: Size(screenHeight * .18, screenHeight * .043),
+                        backgroundColor: const Color(0xFF004280),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadiusGeometry.circular(6),
                         ),
                       ),
-                    ],
-                  ),
-                ),
-
-                SizedBox(height: screenHeight * .073),
-
-                if (!isKeyboard)
-                  OutlinedButton(
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: Size(screenHeight * .18, screenHeight * .043),
-                      backgroundColor: const Color(0xFF004280),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadiusGeometry.circular(6),
+                      onPressed: (saving || !_isPasswordStrong || !_passwordsMatch) ? null : _handleResetFlow,
+                      child: saving
+                          ? SizedBox(
+                        width: screenHeight * .02,
+                        height: screenHeight * .02,
+                        child: const CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                          : Text(
+                        'Continue',
+                        style: TextStyle(color: Colors.white, fontSize: screenHeight * .017),
                       ),
                     ),
-                    onPressed: saving ? null : _handleResetFlow,
-                    child: saving
-                        ? SizedBox(
-                      width: screenHeight * .02,
-                      height: screenHeight * .02,
-                      child: const CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                        : Text(
-                      'Continue',
-                      style: TextStyle(color: Colors.white, fontSize: screenHeight * .017),
-                    ),
-                  ),
-              ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRequirementRow(String text, bool isMet) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1.5),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isMet ? Icons.check_circle : Icons.cancel,
+            color: isMet ? Colors.green : Colors.red,
+            size: screenHeight * .018,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: screenHeight * .014,
+              color: isMet ? Colors.green : Colors.red,
+              fontWeight: FontWeight.w500,
             ),
           ),
         ],
@@ -394,20 +384,16 @@ class _NewPasswordState extends State<NewPassword> {
   }
 }
 
-// ======================
-// OTP dialog widget
-// ======================
 class _OtpDialog extends StatefulWidget {
-  final String email; // add
+  final String email;
   final int cooldownSeconds;
   final Future<void> Function() onResend;
   final Future<void> Function(String otp) onVerify;
-
   final void Function(String msg) onError;
   final String? Function() getError;
 
   const _OtpDialog({
-    required this.email, // add
+    required this.email,
     required this.cooldownSeconds,
     required this.onResend,
     required this.onVerify,
@@ -423,10 +409,10 @@ class _OtpDialogState extends State<_OtpDialog> {
   String maskEmail(String email) {
     final e = email.trim();
     final at = e.indexOf('@');
-    if (at <= 1) return email; // fallback
+    if (at <= 1) return email;
 
     final local = e.substring(0, at);
-    final domain = e.substring(at); // kasama na '@'
+    final domain = e.substring(at);
 
     if (local.length <= 2) {
       return '${local[0]}*${domain}';
@@ -634,7 +620,6 @@ class _OtpDialogState extends State<_OtpDialog> {
                   await widget.onResend();
                   if (!mounted) return;
                   _startCooldown(widget.cooldownSeconds);
-                  // Show Success Modal instead of SnackBar
                   _showSuccessModal();
                 } catch (e) {
                   if (!mounted) return;

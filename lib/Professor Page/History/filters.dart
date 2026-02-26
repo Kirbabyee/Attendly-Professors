@@ -38,6 +38,7 @@ class DataFilter extends StatefulWidget {
 class _DataFilterState extends State<DataFilter> {
   bool _offline = false;
   StreamSubscription? _connSub;
+  RealtimeChannel? _realtimeChannel; // ✅ Variable for Realtime
 
   Future<bool> _hasInternet() async {
     final conn = await Connectivity().checkConnectivity();
@@ -61,11 +62,10 @@ class _DataFilterState extends State<DataFilter> {
   String? _err;
 
   List<String> classOptions = ['All'];
-
   final TextEditingController searchController = TextEditingController();
 
-  String selectedStatus = 'All'; // chips: All/Present/Late/Absent
-  String selectedClass = 'All';  // dropdown: Filter by class
+  String selectedStatus = 'All';
+  String selectedClass = 'All';
 
   DateTimeRange? selectedRange;
 
@@ -73,11 +73,12 @@ class _DataFilterState extends State<DataFilter> {
   List<AttendanceRecord> filteredRecords = [];
 
 
+  int _currentPage = 1;
+  final int _itemsPerPage = 10; 
+
   @override
   void initState() {
     super.initState();
-
-    // optional watcher: pag bumalik net, pwede mag reload
     _connSub = Connectivity().onConnectivityChanged.listen((_) async {
       final ok = await _hasInternet();
       if (!mounted) return;
@@ -85,34 +86,56 @@ class _DataFilterState extends State<DataFilter> {
     });
 
     _loadSessions();
+    _setupRealtime(); // ✅ Initialize Realtime listener
   }
 
-  Future<void> _loadSessions() async {
+  // ✅ Supabase Realtime setup
+  void _setupRealtime() {
+    final profId = supabase.auth.currentUser?.id;
+    if (profId == null) return;
+
+    _realtimeChannel = supabase
+        .channel('public:attendance_history')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'attendance_history',
+          callback: (payload) {
+            debugPrint('Realtime Change Detected: ${payload.toString()}');
+            _loadSessions(isRealtime: true); // Refresh without full loading state
+          },
+        )
+        .subscribe();
+  }
+
+  Future<void> _loadSessions({bool isRealtime = false}) async {
     final ok = await _hasInternet();
     if (!ok) {
-      if (!mounted) return;
-      setState(() {
-        _offline = true;
-        _loading = false;
-        _err = null; // wag supabase error
-        // keep old data on screen
-      });
-      _showNoInternetSnack();
+      if (!isRealtime) {
+        if (!mounted) return;
+        setState(() {
+          _offline = true;
+          _loading = false;
+          _err = null;
+        });
+        _showNoInternetSnack();
+      }
       return;
     }
 
     if (!mounted) return;
-    setState(() {
-      _offline = false;
-      _loading = true;
-      _err = null;
-    });
+    if (!isRealtime) {
+      setState(() {
+        _offline = false;
+        _loading = true;
+        _err = null;
+      });
+    }
 
     try {
       final profId = supabase.auth.currentUser?.id;
       if (profId == null) throw 'No logged in professor.';
 
-      // Pull from history, join to session + class
       final rows = await supabase
           .from('attendance_history')
           .select('''
@@ -135,14 +158,13 @@ class _DataFilterState extends State<DataFilter> {
 
       final raw = (rows as List).cast<Map<String, dynamic>>();
 
-      // Dedup by session_id (latest changed_at per session)
       final seen = <String>{};
       final list = <AttendanceRecord>[];
 
       for (final r in raw) {
         final sessionId = (r['session_id'] ?? '').toString();
         if (sessionId.isEmpty) continue;
-        if (seen.contains(sessionId)) continue; // keep latest only
+        if (seen.contains(sessionId)) continue;
         seen.add(sessionId);
 
         final cs = r['class_sessions'] as Map<String, dynamic>?;
@@ -155,7 +177,6 @@ class _DataFilterState extends State<DataFilter> {
         final courseName = (cls['course'] ?? '').toString();
         final courseCode = (cls['course_code'] ?? '').toString();
 
-        // date source: started_at if available, else changed_at (history timestamp)
         final startedAt = cs['started_at'];
         final changedAt = r['changed_at'];
 
@@ -180,38 +201,12 @@ class _DataFilterState extends State<DataFilter> {
       }
 
       allRecords = list;
-      filteredRecords = List.from(allRecords);
-
-      // FIX: Use courseName for the dropdown options to match the UI logic
-      classOptions = [
-        'All',
-        ...{ for (final r in allRecords) r.courseName }
-            .where((x) => x.trim().isNotEmpty && x != '-')
-      ];
-
-      if (!mounted) return;
-      setState(() => _loading = false);
-      applyFilters();
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _offline = true;
-        _loading = false;
-        _err = null;
-      });
-      _showNoInternetSnack();
-    }
-  }
-
-  void applyFilters() {
-    final query = searchController.text.trim().toLowerCase();
-
-    setState(() {
+      
+      final query = searchController.text.trim().toLowerCase();
       filteredRecords = allRecords.where((record) {
         final matchesSearch = record.courseName.toLowerCase().contains(query) ||
             record.courseCode.toLowerCase().contains(query);
 
-        // FIX: Match against courseName since that's what's in classOptions
         final matchesClass =
             selectedClass == 'All' || record.courseName == selectedClass;
 
@@ -224,58 +219,51 @@ class _DataFilterState extends State<DataFilter> {
 
         return matchesSearch && matchesClass && matchesDate;
       }).toList();
-    });
+
+      classOptions = [
+        'All',
+        ...{ for (final r in allRecords) r.courseName }
+            .where((x) => x.trim().isNotEmpty && x != '-')
+      ];
+
+      if (!mounted) return;
+      setState(() => _loading = false);
+    } catch (e) {
+      if (!isRealtime) {
+        if (!mounted) return;
+        setState(() {
+          _offline = true;
+          _loading = false;
+          _err = null;
+        });
+        _showNoInternetSnack();
+      }
+    }
   }
 
-  Future<void> _exportSessionCsv(AttendanceRecord record) async {
-    // pull attendance rows for this session
-    final rows = await supabase
-        .from('attendance')
-        .select('''
-        status,
-        time_in,
-        students(first_name,last_name,student_number)
-      ''')
-        .eq('session_id', record.sessionId)
-        .order('time_in', ascending: true);
+  void applyFilters() {
+    final query = searchController.text.trim().toLowerCase();
 
-    final list = (rows as List).cast<Map<String, dynamic>>();
+    setState(() {
+      filteredRecords = allRecords.where((record) {
+        final matchesSearch = record.courseName.toLowerCase().contains(query) ||
+            record.courseCode.toLowerCase().contains(query);
 
-    // build CSV
-    final b = StringBuffer();
-    b.writeln('Course,Course Code,Date,Student No,Student Name,Status,Time In');
+        final matchesClass =
+            selectedClass == 'All' || record.courseName == selectedClass;
 
-    for (final r in list) {
-      final s = (r['students'] as Map<String, dynamic>?);
-      final name = s == null
-          ? 'Unknown'
-          : '${s['first_name'] ?? ''} ${s['last_name'] ?? ''}'.trim();
+        final matchesDate = selectedRange == null || (() {
+          final d = DateTime(record.date.year, record.date.month, record.date.day);
+          final start = DateTime(selectedRange!.start.year, selectedRange!.start.month, selectedRange!.start.day);
+          final end = DateTime(selectedRange!.end.year, selectedRange!.end.month, selectedRange!.end.day);
+          return !d.isBefore(start) && !d.isAfter(end);
+        })();
 
-      final studNo = (s?['student_number'] ?? '').toString();
-      final status = (r['status'] ?? '').toString();
-      final timeIn = (r['time_in'] ?? '').toString();
+        return matchesSearch && matchesClass && matchesDate;
+      }).toList();
 
-      String esc(String v) => '"${v.replaceAll('"', '""')}"';
-
-      b.writeln([
-        esc(record.courseName),
-        esc(record.courseCode),
-        esc(record.date.toIso8601String().split('T').first),
-        esc(studNo),
-        esc(name),
-        esc(status),
-        esc(timeIn),
-      ].join(','));
-    }
-
-    // save & share
-    final dir = await getTemporaryDirectory();
-    final fileName =
-        'attendance_${record.courseCode}_${record.date.toIso8601String().split("T").first}.csv';
-    final file = File('${dir.path}/$fileName');
-    await file.writeAsString(b.toString());
-
-    await Share.shareXFiles([XFile(file.path)], text: 'Attendance CSV');
+      _currentPage = 1;
+    });
   }
 
   Future<void> pickDateRangeDialogCalendar() async {
@@ -296,17 +284,15 @@ class _DataFilterState extends State<DataFilter> {
             height: 360,
             child: SfDateRangePicker(
               selectionMode: DateRangePickerSelectionMode.range,
-              // Range color
-              startRangeSelectionColor: Color(0xFF004280),
-              endRangeSelectionColor: Color(0xFF004280),
-              rangeSelectionColor: Color(0xFF004280),
-              // Ranged date color
-              rangeTextStyle: TextStyle(color: Colors.white),
+              startRangeSelectionColor: const Color(0xFF004280),
+              endRangeSelectionColor: const Color(0xFF004280),
+              rangeSelectionColor: const Color(0xFF004280),
+              rangeTextStyle: const TextStyle(color: Colors.white),
               toggleDaySelection: true,
-              todayHighlightColor: Color(0xFF004280),
+              todayHighlightColor: const Color(0xFF004280),
               backgroundColor: Colors.white,
-              headerStyle: DateRangePickerHeaderStyle(
-                backgroundColor: Colors.white
+              headerStyle: const DateRangePickerHeaderStyle(
+                  backgroundColor: Colors.white
               ),
               initialSelectedRange: temp == null
                   ? null
@@ -318,7 +304,7 @@ class _DataFilterState extends State<DataFilter> {
                   final DateTime? start = r.startDate;
                   if (start == null) return;
 
-                  final DateTime end = r.endDate ?? start; // non-null end
+                  final DateTime end = r.endDate ?? start;
                   temp = DateTimeRange(start: start, end: end);
                 }
               },
@@ -331,14 +317,14 @@ class _DataFilterState extends State<DataFilter> {
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: Color(0xFF004280)
+                  backgroundColor: const Color(0xFF004280)
               ),
               onPressed: () {
                 setState(() => selectedRange = temp);
                 applyFilters();
                 Navigator.pop(context);
               },
-              child: Text('Apply', style: TextStyle(color: Colors.white),),
+              child: const Text('Apply', style: TextStyle(color: Colors.white),),
             ),
           ],
         );
@@ -354,6 +340,9 @@ class _DataFilterState extends State<DataFilter> {
   @override
   void dispose() {
     _connSub?.cancel();
+    if (_realtimeChannel != null) {
+      supabase.removeChannel(_realtimeChannel!); // ✅ Cleanup Realtime
+    }
     searchController.dispose();
     super.dispose();
   }
@@ -362,6 +351,13 @@ class _DataFilterState extends State<DataFilter> {
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
+
+    final int totalPages = (filteredRecords.length / _itemsPerPage).ceil();
+    final List<AttendanceRecord> paginatedRecords = filteredRecords
+        .skip((_currentPage - 1) * _itemsPerPage)
+        .take(_itemsPerPage)
+        .toList();
+
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -377,17 +373,17 @@ class _DataFilterState extends State<DataFilter> {
                     height: screenHeight > 700 ? 40 : 35,
                     child: TextField(
                       style: TextStyle(
-                        fontSize: screenHeight > 700 ? 16 : 14
+                          fontSize: screenHeight > 700 ? 16 : 14
                       ),
                       controller: searchController,
                       onChanged: (_) => applyFilters(),
                       decoration: InputDecoration(
                         hintStyle: TextStyle(
-                          fontSize: screenHeight > 700 ? 16 : 14
+                            fontSize: screenHeight > 700 ? 16 : 14
                         ),
                         hintText: 'Search course',
                         prefixIcon: const Icon(Icons.search),
-                        contentPadding: EdgeInsets.symmetric(vertical: 10),
+                        contentPadding: const EdgeInsets.symmetric(vertical: 10),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                           borderSide: const BorderSide(color: Colors.grey),
@@ -401,100 +397,98 @@ class _DataFilterState extends State<DataFilter> {
                   ),
                 ),
 
-                SizedBox(height: 10,),
+                const SizedBox(height: 10),
 
-                Container(
-                  child: Row(
-                    children: [
-                      // Date Filter Row
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: SizedBox(
-                          width: MediaQuery.of(context).size.width * 0.4,
-                          child: OutlinedButton(
-                            style: OutlinedButton.styleFrom(
-                              side: BorderSide(color: Colors.grey),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                            onPressed: pickDateRangeDialogCalendar,
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    selectedRange == null ? 'Select date' : _fmtRange(selectedRange!),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    softWrap: false,
-                                    style: const TextStyle(fontSize: 12, color: Colors.black),
-                                  ),
-                                ),
-                                if (selectedRange != null)
-                                  GestureDetector(
-                                    onTap: () {
-                                      setState(() => selectedRange = null);
-                                      applyFilters();
-                                    },
-                                    child: const Icon(Icons.close, size: 16),
-                                  ),
-                                SizedBox(width: 5,),
-                                Icon(CupertinoIcons.calendar, color: Colors.black,)
-                              ],
+                Row(
+                  children: [
+                    // Date Filter Row
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: SizedBox(
+                        width: MediaQuery.of(context).size.width * 0.4,
+                        child: OutlinedButton(
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Colors.grey),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
                             ),
                           ),
-                        ),
-                      ),
-
-                      SizedBox(width: screenWidth * .14),
-
-                      // Dropdown
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: Container(
-                          width: screenWidth * 0.35,
-                          padding: const EdgeInsets.symmetric(horizontal: 15),
-                          height: 42,
-                          decoration: BoxDecoration(
-                            border: Border.all(color: Colors.grey),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: DropdownButton<String>(
-                            isExpanded: true,
-                            dropdownColor: Colors.white, // dropdown list bg
-                            underline: const SizedBox(), // ❌ remove default underline
-                            iconEnabledColor: Colors.black, // arrow color
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.black, // text color
-                            ),
-                            value: selectedClass,
-                            items: classOptions.map((c) {
-                              return DropdownMenuItem(
-                                value: c,
+                          onPressed: pickDateRangeDialogCalendar,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
                                 child: Text(
-                                  c,
-                                  overflow: TextOverflow.ellipsis,
+                                  selectedRange == null ? 'Select date' : _fmtRange(selectedRange!),
                                   maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  softWrap: false,
+                                  style: const TextStyle(fontSize: 12, color: Colors.black),
                                 ),
-                              );
-                            }).toList(),
-                            onChanged: (value) {
-                              if (value == null) return;
-                              setState(() => selectedClass = value);
-                              applyFilters();
-                            },
+                              ),
+                              if (selectedRange != null)
+                                GestureDetector(
+                                  onTap: () {
+                                    setState(() => selectedRange = null);
+                                    applyFilters();
+                                  },
+                                  child: const Icon(Icons.close, size: 16),
+                                ),
+                              const SizedBox(width: 5),
+                              const Icon(CupertinoIcons.calendar, color: Colors.black,)
+                            ],
                           ),
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+
+                    SizedBox(width: screenWidth * .14),
+
+                    // Dropdown
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Container(
+                        width: screenWidth * 0.35,
+                        padding: const EdgeInsets.symmetric(horizontal: 15),
+                        height: 42,
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: DropdownButton<String>(
+                          isExpanded: true,
+                          dropdownColor: Colors.white,
+                          underline: const SizedBox(),
+                          iconEnabledColor: Colors.black,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.black,
+                          ),
+                          value: selectedClass,
+                          items: classOptions.map((c) {
+                            return DropdownMenuItem(
+                              value: c,
+                              child: Text(
+                                c,
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
+                            );
+                          }).toList(),
+                          onChanged: (value) {
+                            if (value == null) return;
+                            setState(() => selectedClass = value);
+                            applyFilters();
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
 
-                SizedBox(height: 10,),
+                const SizedBox(height: 10),
 
-                // Title + Chips
+                // Title
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -502,14 +496,13 @@ class _DataFilterState extends State<DataFilter> {
                       'Record Details',
                       style: TextStyle(fontWeight: FontWeight.bold, fontSize: screenHeight > 700 ? 15 : 14),
                     ),
-                    screenHeight > 700 ? SizedBox(height: 5) : SizedBox(),
+                    screenHeight > 700 ? const SizedBox(height: 5) : const SizedBox(),
                   ],
                 ),
 
                 SizedBox(height: screenHeight > 700 ? 10 : 5),
 
-                // LIST AREA (scrollable)
-                // LIST AREA (scrollable) + PULL TO REFRESH
+                // LIST AREA
                 Expanded(
                   child: _loading
                       ? const Center(child: CircularProgressIndicator())
@@ -517,9 +510,9 @@ class _DataFilterState extends State<DataFilter> {
                       ? Center(child: Text('Error: $_err'))
                       : RefreshIndicator(
                     onRefresh: () async {
-                      await _loadSessions(); // reload from DB
+                      await _loadSessions();
                     },
-                    child: filteredRecords.isEmpty
+                    child: paginatedRecords.isEmpty 
                         ? ListView(
                       physics: const AlwaysScrollableScrollPhysics(),
                       children: const [
@@ -529,9 +522,9 @@ class _DataFilterState extends State<DataFilter> {
                     )
                         : ListView.builder(
                       physics: const AlwaysScrollableScrollPhysics(),
-                      itemCount: filteredRecords.length,
+                      itemCount: paginatedRecords.length, 
                       itemBuilder: (context, index) {
-                        final record = filteredRecords[index];
+                        final record = paginatedRecords[index]; 
                         final bg = index.isEven ? Colors.white : Colors.grey[200];
 
                         return Container(
@@ -604,7 +597,58 @@ class _DataFilterState extends State<DataFilter> {
                       },
                     ),
                   ),
-                )
+                ),
+
+                if (filteredRecords.isNotEmpty && !_loading)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Showing ${((_currentPage - 1) * _itemsPerPage) + 1} - ${(_currentPage * _itemsPerPage).clamp(0, filteredRecords.length)} of ${filteredRecords.length}',
+                          style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w500),
+                        ),
+                        Row(
+                          children: [
+                            InkWell(
+                              onTap: _currentPage > 1
+                                  ? () => setState(() => _currentPage--)
+                                  : null,
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: _currentPage > 1 ? Colors.grey[200] : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Icon(Icons.chevron_left, size: 20, color: _currentPage > 1 ? Colors.black : Colors.grey),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              'Page $_currentPage of $totalPages',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(width: 12),
+                            InkWell(
+                              onTap: _currentPage < totalPages
+                                  ? () => setState(() => _currentPage++)
+                                  : null,
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: _currentPage < totalPages ? Colors.grey[200] : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Icon(Icons.chevron_right, size: 20, color: _currentPage < totalPages ? Colors.black : Colors.grey),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
               ],
             ),
           ),

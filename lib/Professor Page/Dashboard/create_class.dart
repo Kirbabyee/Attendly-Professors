@@ -27,6 +27,9 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
   List<Map<String, dynamic>> _availablePrograms = []; //  Programs from DB
   bool _loadingPrograms = false;
 
+  String? _conflictError; // ✅ Real-time conflict error message
+  bool _isValidating = false;
+
   final supabase = Supabase.instance.client;
 
   // Pre-defined room list (Value validation)
@@ -34,7 +37,7 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
     for (int i = 100; i <= 110; i++) i.toString(),
     for (int i = 200; i <= 210; i++) i.toString(),
     for (int i = 300; i <= 310; i++) i.toString(),
-    for (int i = 400; i <= 410; i++) i.toString(),
+    '400', '410'
   ];
 
   Future<void> _loadCampusWifi() async {
@@ -114,6 +117,7 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
     setState(() => _loadingSchedules = true);
 
     try {
+      // Prepend "Room " for DB query
       final roomStr = 'Room $roomVal';
       var query = supabase
           .from('classes')
@@ -131,10 +135,33 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
         _roomSchedules = List<Map<String, dynamic>>.from(res);
         _loadingSchedules = false;
       });
+      _updateScheduleConflict(); // ✅ Trigger validation after fetching schedules
     } catch (e) {
       debugPrint('Error fetching room schedules: $e');
       if (mounted) setState(() => _loadingSchedules = false);
     }
+  }
+
+  // ✅ REAL-TIME CONFLICT VALIDATION
+  Future<void> _updateScheduleConflict() async {
+    if (_selectedDay == null || _room.text.isEmpty) {
+      if (mounted) setState(() => _conflictError = null);
+      return;
+    }
+
+    if (mounted) setState(() => _isValidating = true);
+
+    final conflicts = await _checkRoomConflicts();
+
+    if (!mounted) return;
+    setState(() {
+      if (conflicts.isNotEmpty) {
+        _conflictError = "Conflict detected with: ${conflicts.first}";
+      } else {
+        _conflictError = null;
+      }
+      _isValidating = false;
+    });
   }
 
   Future<bool> _confirmSave({required bool isEdit}) async {
@@ -201,7 +228,7 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
       barrierDismissible: true,
       builder: (_) => AlertDialog(
         backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         title: const Text('Confirm duration'),
         content: Text(
           'End time is earlier than start time, so this class will be treated as an overnight class.\n\n'
@@ -234,6 +261,7 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
 
     final item = widget.initialItem!;
     final currentYearSection = '${_selectedProgram?.toUpperCase()} ${_selectedYear}-${_selectedSection?.toUpperCase()}';
+    // Check with "Room " prefix
     final currentRoom = 'Room ${_room.text.trim()}';
     final currentSchedule = '$_selectedDay: ${_formatTime(_startHour, _startMinute, _startIsAm)} - ${_formatTime(_endHour, _endMinute, _endIsAm)}';
 
@@ -245,15 +273,34 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
   }
 
   (int, int, bool) _parseTime(String time) {
-    final reg = RegExp(r'^(\d{1,2}):(\d{2})\s*(AM|PM)$', caseSensitive: false);
-    final m = reg.firstMatch(time.trim());
-    if (m == null) return (12, 0, true);
+    time = time.trim();
 
-    final hour = int.parse(m.group(1)!);
-    final minute = int.parse(m.group(2)!);
-    final am = m.group(3)!.toUpperCase() == 'AM';
+    // Check para sa 12-hour format (e.g., "08:00 AM" o "12:00 PM")
+    final reg12 = RegExp(r'^(\d{1,2}):(\d{2})\s*(AM|PM)$', caseSensitive: false);
+    final m12 = reg12.firstMatch(time);
+    if (m12 != null) {
+      final hour = int.parse(m12.group(1)!);
+      final minute = int.parse(m12.group(2)!);
+      final am = m12.group(3)!.toUpperCase() == 'AM';
+      return (hour, minute, am);
+    }
 
-    return (hour, minute, am);
+    // Check para sa 24-hour format mula sa database (e.g., "13:00" o "13:00:00")
+    final reg24 = RegExp(r'^(\d{1,2}):(\d{2})(:\d{2})?$');
+    final m24 = reg24.firstMatch(time);
+    if (m24 != null) {
+      final hour = int.parse(m24.group(1)!);
+      final minute = int.parse(m24.group(2)!);
+      final am = hour < 12;
+
+      int hour12 = hour % 12;
+      if (hour12 == 0) hour12 = 12; // Handle 00:00 to 12 AM and 12:00 to 12 PM
+      return (hour12, minute, am);
+    }
+
+    // Default to Midnight kung totally sira ang string para hindi mag-crash
+    debugPrint("Failed to parse time: $time. Defaulting to 12:00 AM.");
+    return (12, 0, true);
   }
 
   static const _alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -322,6 +369,7 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
       _className.text = item.course;
       _courseCode.text = item.courseCode;
 
+      // Strip "Room " prefix when loading into the dropdown variable
       _room.text = item.room
           .replaceFirst(RegExp(r'^\s*Room\s+', caseSensitive: false), '')
           .trim();
@@ -366,7 +414,8 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
   final _classCode = TextEditingController();
   final _room = TextEditingController();
 
-  int _startHour = 12, _startMinute = 0, _endHour = 3, _endMinute = 0;
+  // Enforce 6 AM - 9 PM restriction
+  int _startHour = 8, _startMinute = 0, _endHour = 9, _endMinute = 0;
   bool _startIsAm = true, _endIsAm = true, _saving = false;
 
   @override
@@ -420,6 +469,7 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
     return _formatTime(h % 12 == 0 ? 12 : h % 12, m, h < 12);
   }
 
+  // ✅ 2. UPDATE: Solidified conflict detection
   Future<List<String>> _checkRoomConflicts() async {
     final day = _selectedDay;
     final roomVal = _room.text.trim();
@@ -427,8 +477,9 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
 
     final startMin = _to24hMinutes(_startHour, _startMinute, _startIsAm);
     int endMin = _to24hMinutes(_endHour, _endMinute, _endIsAm);
-    if (endMin <= startMin) endMin += 1440;
+    if (endMin <= startMin) endMin += 1440; // Kapag tumawid ng midnight
 
+    // Prepend "Room " for DB conflict check
     final roomStr = 'Room $roomVal';
     var query = supabase.from('classes')
         .select('course, start_time, end_time, room')
@@ -452,8 +503,12 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
 
       final eStartMin = _to24hMinutes(eStartParts.$1, eStartParts.$2, eStartParts.$3);
       int eEndMin = _to24hMinutes(eEndParts.$1, eEndParts.$2, eEndParts.$3);
-      if (eEndMin <= eStartMin) eEndMin += 1440;
+      if (eEndMin <= eStartMin) eEndMin += 1440; // Kapag existing class ay tumawid ng midnight
 
+      // STRICT OVERLAP CONDITION:
+      // (Bago pumasok < Luma matapos) AND (Bago matapos > Luma magsimula)
+      // Kung 12:00 PM matatapos ang bago (endMin), at 12:00 PM magsisimula ang luma (eStartMin),
+      // ang `720 > 720` ay FALSE. Kaya papasa siya at hindi magco-conflict.
       if (startMin < eEndMin && endMin > eStartMin) {
         final fmtStart = _convert24To12(eStartStr);
         final fmtEnd = _convert24To12(eEndStr);
@@ -505,6 +560,8 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
     );
   }
 
+  final ScrollController _conflictScrollController = ScrollController(); //  Conflict scrollbar
+
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
@@ -540,7 +597,15 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
                         decoration: _input('Select Course Name'),
                         dropdownColor: Colors.white,
                         items: _availableSubjects.map((s) => DropdownMenuItem<String>(value: s['course_name'].toString(), child: Text(s['course_name'].toString(), style: const TextStyle(fontSize: 12)))).toList(),
-                        onChanged: (v) { if (v != null) setState(() { _className.text = v; final sub = _availableSubjects.firstWhere((s) => s['course_name'] == v); _courseCode.text = sub['course_code'] ?? ''; }); },
+                        onChanged: (v) { 
+                          if (v != null) {
+                            setState(() { 
+                              _className.text = v; 
+                              final sub = _availableSubjects.firstWhere((s) => s['course_name'] == v); 
+                              _courseCode.text = sub['course_code'] ?? ''; 
+                            }); 
+                          }
+                        },
                         validator: (v) => (_className.text.isEmpty) ? 'Required' : null,
                       ),
                   const SizedBox(height: 8),
@@ -622,7 +687,7 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
                         value: 'HDR_4',
                         child: Text('4th Floor', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF004280))),
                       ),
-                      ...[for (int i = 400; i <= 410; i++) i.toString(),].map((r) => DropdownMenuItem<String>(
+                      ...['400', '410'].map((r) => DropdownMenuItem<String>(
                         value: r,
                         child: Padding(padding: const EdgeInsets.only(left: 12), child: Text(r, style: const TextStyle(fontSize: 12))),
                       )),
@@ -632,6 +697,7 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
                         setState(() {
                           _room.text = v;
                         });
+                        _fetchRoomSchedules(v); // ✅ Update schedules when room changes
                       }
                     },
                     validator: (v) => (_room.text.isEmpty) ? 'Required' : null,
@@ -647,31 +713,107 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
                   const SizedBox(height: 18),
 
                   if (_room.text.trim().isNotEmpty) ...[
-                    Row(children: [const Icon(Icons.calendar_today_outlined, size: 14, color: Colors.grey), const SizedBox(width: 6), Text('Schedules in Room ${_room.text.trim()}:', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey))]),
+                    Row(children: [const Icon(Icons.calendar_today_outlined, size: 14, color: Colors.grey), const SizedBox(width: 6), Text('Schedules in Room ${_room.text.trim()}${_selectedDay != null ? " on $_selectedDay" : ""}:', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey))]),
                     const SizedBox(height: 8),
                     Container(
-                      width: double.infinity, padding: const EdgeInsets.all(12),
+                      width: double.infinity,
                       decoration: BoxDecoration(
                         color: const Color(0xFFF9FAFB), 
                         borderRadius: BorderRadius.circular(8), 
                         border: Border.all(color: const Color(0xFFE5E7EB)),
                       ),
-                      child: _loadingSchedules ? const Center(child: CupertinoActivityIndicator(radius: 8)) : _roomSchedules.isEmpty ? const Text('No other classes found for this room.', style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: Colors.black54)) : Column(crossAxisAlignment: CrossAxisAlignment.start, children: _roomSchedules.map((s) {
-                        final start = _convert24To12(s['start_time']?.toString() ?? '');
-                        final end = _convert24To12(s['end_time']?.toString() ?? '');
-                        return Padding(padding: const EdgeInsets.only(bottom: 4), child: Text('• ${s['day_of_week']}: $start - $end (${s['course']})', style: const TextStyle(fontSize: 11, color: Colors.black87)));
-                      }).toList()),
+                      child: _loadingSchedules 
+                        ? const Padding(padding: EdgeInsets.all(12), child: Center(child: CupertinoActivityIndicator(radius: 8))) 
+                        : (() {
+                            final filtered = _roomSchedules.where((s) {
+                              if (_selectedDay == null) return true; 
+                              return s['day_of_week'] == _selectedDay;
+                            }).toList();
+
+                            if (filtered.isEmpty) {
+                              return const Padding(padding: EdgeInsets.all(12), child: Text('No other classes found for this room.', style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: Colors.black54)));
+                            }
+
+                            return ConstrainedBox(
+                              constraints: const BoxConstraints(maxHeight: 85), 
+                              child: Scrollbar(
+                                controller: _conflictScrollController,
+                                thumbVisibility: true, 
+                                thickness: 4,
+                                radius: const Radius.circular(8),
+                                child: SingleChildScrollView(
+                                  controller: _conflictScrollController,
+                                  padding: const EdgeInsets.all(12),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: filtered.map((s) {
+                                      final start = _convert24To12(s['start_time']?.toString() ?? '');
+                                      final end = _convert24To12(s['end_time']?.toString() ?? '');
+                                      return Padding(padding: const EdgeInsets.only(bottom: 4), child: Text('• ${s['day_of_week']}: $start - $end (${s['course']})', style: const TextStyle(fontSize: 11, color: Colors.black87)));
+                                    }).toList(),
+                                  ),
+                                ),
+                              ),
+                            );
+                          })(),
                     ),
                     const SizedBox(height: 18),
                   ],
 
                   _label('Day'),
-                  DropdownButtonFormField<String>(value: _selectedDay, isDense: true, style: const TextStyle(fontSize: 12, color: Colors.black), decoration: _input('Select Day'), dropdownColor: Colors.white, items: _days.map((d) => DropdownMenuItem(value: d, child: Text(d, style: const TextStyle(fontSize: 12)))).toList(), onChanged: (v) => setState(() => _selectedDay = v), validator: (v) => (v == null || v.isEmpty) ? 'Required' : null),
+                  DropdownButtonFormField<String>(
+                    value: _selectedDay, 
+                    isDense: true, 
+                    style: const TextStyle(fontSize: 12, color: Colors.black), 
+                    decoration: _input('Select Day'), 
+                    dropdownColor: Colors.white, 
+                    items: _days.map((d) => DropdownMenuItem(value: d, child: Text(d, style: const TextStyle(fontSize: 12)))).toList(), 
+                    onChanged: (v) {
+                      setState(() => _selectedDay = v);
+                      _updateScheduleConflict(); // ✅ Real-time validation on day change
+                    }, 
+                    validator: (v) => (v == null || v.isEmpty) ? 'Required' : null
+                  ),
                   const SizedBox(height: 8),
 
-                  _timeRow(label: 'Time Start', hour: _startHour, minute: _startMinute, isAm: _startIsAm, onUpdate: (h, m, am) => setState(() { _startHour = h; _startMinute = m; _startIsAm = am; })),
+                  _timeRow(
+                    label: 'Time Start', 
+                    hour: _startHour, 
+                    minute: _startMinute, 
+                    isAm: _startIsAm, 
+                    onUpdate: (h, m, am) {
+                      setState(() { 
+                        _startHour = h; _startMinute = m; _startIsAm = am; 
+                      });
+                      _updateScheduleConflict(); // ✅ Real-time validation
+                    }
+                  ),
                   const SizedBox(height: 16),
-                  _timeRow(label: 'Time End', hour: _endHour, minute: _endMinute, isAm: _endIsAm, onUpdate: (h, m, am) => setState(() { _endHour = h; _endMinute = m; _endIsAm = am; })),
+                  _timeRow(
+                    label: 'Time End', 
+                    hour: _endHour, 
+                    minute: _endMinute, 
+                    isAm: _endIsAm, 
+                    onUpdate: (h, m, am) {
+                      setState(() { 
+                        _endHour = h; _endMinute = m; _endIsAm = am; 
+                      });
+                      _updateScheduleConflict(); // ✅ Real-time validation
+                    }
+                  ),
+
+                  // ✅ Real-time conflict warning message
+                  if (_conflictError != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.error_outline, color: Colors.red, size: 16),
+                          const SizedBox(width: 6),
+                          Expanded(child: Text(_conflictError!, style: const TextStyle(color: Colors.red, fontSize: 11, fontWeight: FontWeight.w600))),
+                        ],
+                      ),
+                    ),
 
                   const SizedBox(height: 22),
 
@@ -679,22 +821,17 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
                     child: SizedBox(
                       width: 180, height: 44,
                       child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF004280), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                        onPressed: (_saving || (isEdit && !_hasChanges())) ? null : () async {
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: (_conflictError != null) ? Colors.grey : const Color(0xFF004280), 
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
+                        ),
+                        onPressed: (_saving || _conflictError != null || (isEdit && !_hasChanges())) ? null : () async {
                           if (!_formKey.currentState!.validate()) return;
                           if (_saving) return;
 
                           setState(() { _saving = true; });
 
                           try {
-                            //  1. Room Conflict Check (Modal version)
-                            final conflicts = await _checkRoomConflicts();
-                            if (conflicts.isNotEmpty) {
-                              setState(() => _saving = false);
-                              _showConflictModal(conflicts);
-                              return;
-                            }
-
                             final ok = await _confirmSave(isEdit: isEdit);
                             if (!ok) { setState(() => _saving = false); return; }
 
@@ -713,6 +850,7 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
                             final courseName = _className.text.trim();
                             final courseCode = _courseCode.text.trim().toUpperCase();
                             final yearSection = '${_selectedProgram!.toUpperCase()} ${_selectedYear!}-${_selectedSection!.toUpperCase()}';
+                            // FORCE "Room " prefix for database storage
                             final room = 'Room ${_room.text.trim()}';
                             final day = _selectedDay!;
                             final start = _formatTime(_startHour, _startMinute, _startIsAm);
@@ -768,23 +906,47 @@ void _showCustomTimePicker({required BuildContext context, required int initialH
   int selectedHour = initialHour, selectedMinute = initialMinute; bool selectedIsAm = initialIsAm;
   showDialog(
     context: context,
-    builder: (context) => Center(
-      child: Container(
-        width: MediaQuery.of(context).size.width * 0.8, height: 250, padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15)),
-        child: Column(children: [
-          Expanded(child: Row(children: [
-            _buildPicker(initialItem: selectedIsAm ? 0 : 1, children: ['AM', 'PM'], onChanged: (i) => selectedIsAm = i == 0),
-            _buildPicker(initialItem: selectedHour - 1, children: List.generate(12, (i) => (i + 1).toString().padLeft(2, '0')), onChanged: (i) => selectedHour = i + 1),
-            _buildPicker(initialItem: selectedMinute, children: List.generate(60, (i) => i.toString().padLeft(2, '0')), onChanged: (i) => selectedMinute = i),
-          ])),
-          const SizedBox(height: 10),
-          Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: Colors.black))),
-            TextButton(style: TextButton.styleFrom(backgroundColor: Color(0xFF004280)), onPressed: () { onConfirm(selectedHour, selectedMinute, selectedIsAm); Navigator.pop(context); }, child: const Text('OK', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-          ])
-        ]),
-      ),
+    builder: (context) => StatefulBuilder(
+      builder: (context, setState) {
+        final totalMinutes = (selectedHour % 12 + (selectedIsAm ? 0 : 12)) * 60 + selectedMinute;
+        final isValid = totalMinutes >= 360 && totalMinutes <= 1260; // 6 AM - 9 PM
+
+        return Center(
+          child: Container(
+            width: MediaQuery.of(context).size.width * 0.8, height: 280, padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15)),
+            child: Column(children: [
+              Expanded(child: Row(children: [
+                _buildPicker(initialItem: selectedIsAm ? 0 : 1, children: ['AM', 'PM'], onChanged: (i) => setState(() => selectedIsAm = i == 0)),
+                _buildPicker(initialItem: selectedHour - 1, children: List.generate(12, (i) => (i + 1).toString().padLeft(2, '0')), onChanged: (i) => setState(() => selectedHour = i + 1)),
+                _buildPicker(initialItem: selectedMinute, children: List.generate(60, (i) => i.toString().padLeft(2, '0')), onChanged: (i) => setState(() => selectedMinute = i)),
+              ])),
+              if (!isValid)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8.0),
+                  child: Text(
+                    'Time must be between 6 AM and 9 PM',
+                    style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              const SizedBox(height: 10),
+              Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: Colors.black))),
+                TextButton(
+                  style: TextButton.styleFrom(
+                    backgroundColor: isValid ? const Color(0xFF004280) : Colors.grey,
+                  ), 
+                  onPressed: !isValid ? null : () { 
+                    onConfirm(selectedHour, selectedMinute, selectedIsAm); 
+                    Navigator.pop(context); 
+                  }, 
+                  child: const Text('OK', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
+                ),
+              ])
+            ]),
+          ),
+        );
+      }
     ),
   );
 }
