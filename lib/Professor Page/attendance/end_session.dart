@@ -11,6 +11,7 @@ import '../../widgets/class_session.dart';
 class EndSession extends StatefulWidget {
   final List<String> students;
   final VoidCallback onEnded;
+  final bool isReadOnly; // Added read-only support
 
   final String courseTitle;
   final String classId;
@@ -22,15 +23,16 @@ class EndSession extends StatefulWidget {
 
   const EndSession({
     super.key,
+    required this.classId,
     required this.students,
     required this.onEnded,
     required this.courseTitle,
-    required this.classId,
     required this.courseCode,
     required this.professor,
     required this.classCode,
     required this.room,
     required this.sched,
+    this.isReadOnly = false,
   });
 
   @override
@@ -52,7 +54,15 @@ class _EndSessionState extends State<EndSession> {
 
   // Lists
   List<Map<String, dynamic>> _enrolled = [];
+  List<Map<String, dynamic>> _pendingEnrollments = []; 
   List<Map<String, dynamic>> _attendance = [];
+
+  // Selection for bulk approval
+  final Set<String> _selectedPendingIds = {};
+
+  // View States
+  bool _viewAllLog = false;
+  bool _viewAllPending = false;
 
   // Re-verify & Timer States
   bool _reverifying = false;
@@ -62,20 +72,78 @@ class _EndSessionState extends State<EndSession> {
   bool _processingAbsents = false;
 
   final ScrollController _scrollController = ScrollController();
+  final ScrollController _logScrollController = ScrollController();
+  final ScrollController _pendingScrollController = ScrollController(); 
+
+  // Realtime Channels
+  RealtimeChannel? _attendanceChannel;
+  RealtimeChannel? _enrollmentChannel;
 
   @override
   void initState() {
     super.initState();
     _loadData().then((_) {
-      _checkGlobalTimer();
+      if (!widget.isReadOnly) {
+        _checkGlobalTimer();
+        _setupRealtime();
+      }
     });
   }
 
   @override
   void dispose() {
     _scrollController.dispose();
-    _localSyncTimer?.cancel(); // Cancel local sync, but global timer keeps running
+    _logScrollController.dispose();
+    _pendingScrollController.dispose();
+    _localSyncTimer?.cancel();
+    _stopRealtime(); 
     super.dispose();
+  }
+
+  void _setupRealtime() {
+    final supabase = Supabase.instance.client;
+
+    if (_sessionId != null) {
+      _attendanceChannel = supabase
+          .channel('public:attendance:$_sessionId')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'attendance',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'session_id',
+              value: _sessionId,
+            ),
+            callback: (payload) {
+              _loadAttendanceOnly(); 
+            },
+          )
+          .subscribe();
+    }
+
+    _enrollmentChannel = supabase
+        .channel('public:class_enrollments:${widget.classId}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'class_enrollments',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'class_id',
+            value: widget.classId,
+          ),
+          callback: (payload) {
+            _loadEnrollmentsOnly(); 
+          },
+        )
+        .subscribe();
+  }
+
+  void _stopRealtime() {
+    final supabase = Supabase.instance.client;
+    if (_attendanceChannel != null) supabase.removeChannel(_attendanceChannel!);
+    if (_enrollmentChannel != null) supabase.removeChannel(_enrollmentChannel!);
   }
 
   // CHECK IF A TIMER IS ALREADY RUNNING FOR THIS SESSION
@@ -221,7 +289,7 @@ class _EndSessionState extends State<EndSession> {
         } else {
           _showCustomModal(
             title: 'Verification Ended',
-            content: '', // No extra message
+            content: '', 
           );
         }
       }
@@ -292,18 +360,17 @@ class _EndSessionState extends State<EndSession> {
           .from('attendance')
           .update({'status': 'pending'})
           .eq('session_id', _sessionId!)
-          .neq('status', 'absent'); // Students marked absent stay absent
+          .neq('status', 'absent'); 
 
-      // 2. Queue Notifications (Exclude students who are already 'absent')
+      // 2. Queue Notifications
       if (_enrolled.isNotEmpty) {
-        // Find IDs of students who are currently marked as absent
         final absentIds = _attendance
             .where((a) => (statusByStudentId[a['student_id']] ?? '') == 'absent')
             .map((a) => a['student_id'] as String)
             .toSet();
 
         final notificationPayload = _enrolled
-            .where((student) => !absentIds.contains(student['student_id'])) // Don't notify absent students
+            .where((student) => !absentIds.contains(student['student_id'])) 
             .map((student) {
           final studentId = student['student_id'] as String;
           return {
@@ -323,7 +390,6 @@ class _EndSessionState extends State<EndSession> {
           await supabase.from('notification_queue').insert(notificationPayload);
 
           try {
-            // Using 'start_session' as trigger reason might be more reliable for current Edge Function
             await supabase.functions.invoke(
               'process_notification',
               body: {
@@ -364,7 +430,7 @@ class _EndSessionState extends State<EndSession> {
       builder: (_) => AlertDialog(
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.white,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 60), // Small width
+        insetPadding: const EdgeInsets.symmetric(horizontal: 60), 
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         title: Text(title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
         content: content.isEmpty ? null : Text(content, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13)),
@@ -379,8 +445,6 @@ class _EndSessionState extends State<EndSession> {
       ),
     );
   }
-
-  // --- EXISTING HELPER METHODS ---
 
   Future<void> _openPendingActions({
     required String studentId,
@@ -511,30 +575,67 @@ class _EndSessionState extends State<EndSession> {
   }
 
   Future<void> _showSuccessModal(String message) async {
-    showDialog(
+    await showDialog(
       context: context,
-      barrierDismissible: false,
-      builder: (_) => AlertDialog(
+      barrierDismissible: true,
+      builder: (context) => AlertDialog(
         backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 110, vertical: 24),
-        contentPadding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(CupertinoIcons.check_mark_circled_solid,
-                color: Color(0xFF018832), size: 40),
-            const SizedBox(height: 10),
-            Text(message, textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 13)),
+            const Icon(Icons.check_circle_outline, color: Colors.green, size: 50),
+            const SizedBox(height: 14),
+            const Text(
+              "Success",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF004280),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: () => Navigator.pop(context),
+                child: const Text("Got it!", style: TextStyle(color: Colors.white)),
+              ),
+            ),
           ],
         ),
       ),
     );
+  }
 
-    await Future.delayed(const Duration(seconds: 1));
-    if (mounted) Navigator.pop(context);
+  void _showLoadingDialog(String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        content: Container(
+          width: double.maxFinite,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(width: 20),
+              Expanded(
+                child: Text(message, style: const TextStyle(fontSize: 14)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<String> _markStudentStatus({
@@ -544,7 +645,7 @@ class _EndSessionState extends State<EndSession> {
     final supabase = Supabase.instance.client;
     if (_sessionId == null) throw 'No active session id';
 
-    final nowUtc = DateTime.now().toUtc(); // FORCE UTC
+    final nowUtc = DateTime.now().toUtc(); 
     final nowIso = nowUtc.toIso8601String();
     final changedBy = supabase.auth.currentUser?.id;
 
@@ -562,10 +663,9 @@ class _EndSessionState extends State<EndSession> {
     // 15-MINUTE RULE LOGIC (Based on original time_in)
     String calculatedStatus = newStatus;
     if (newStatus == 'present' && _startedAt != null) {
-      // Use existing time_in if it was already recorded, otherwise use now (UTC)
       DateTime referenceTime = nowUtc;
       if (existingTimeInStr != null) {
-        referenceTime = DateTime.parse(existingTimeInStr).toUtc(); // Ensure UTC
+        referenceTime = DateTime.parse(existingTimeInStr).toUtc(); 
       }
       
       final diff = referenceTime.difference(_startedAt!.toUtc());
@@ -621,16 +721,15 @@ class _EndSessionState extends State<EndSession> {
     final supabase = Supabase.instance.client;
     if (_sessionId == null) throw 'No active session id';
 
-    // safety: make sure enrolled + attendance are loaded
-    if (_enrolled.isEmpty) {
-      final enrolledRows = await supabase
-          .from('class_enrollments')
-          .select(
-          'student_id, students(first_name,last_name,student_number,avatar_url)')
-          .eq('class_id', widget.classId)
-          .order('joined_at', ascending: true);
-      _enrolled = (enrolledRows as List).cast<Map<String, dynamic>>();
-    }
+    // Fetch enrolled students
+    final enrolledRows = await supabase
+        .from('class_enrollments')
+        .select('student_id, status, students(first_name,last_name,student_number,avatar_url)')
+        .eq('class_id', widget.classId)
+        .eq('status', 'enrolled')
+        .order('joined_at', ascending: true);
+    
+    final localEnrolled = (enrolledRows as List).cast<Map<String, dynamic>>();
 
     final existingRows = await supabase
         .from('attendance')
@@ -643,7 +742,7 @@ class _EndSessionState extends State<EndSession> {
       existingByStudent[r['student_id'] as String] = r;
     }
 
-    final enrolledIds = _enrolled.map((e) => e['student_id'] as String).toList();
+    final enrolledIds = localEnrolled.map((e) => e['student_id'] as String).toList();
     final missingIds = enrolledIds.where((sid) =>
     !existingByStudent.containsKey(sid)).toList();
 
@@ -665,7 +764,7 @@ class _EndSessionState extends State<EndSession> {
     // Set time_out for present/late
     await supabase
         .from('attendance')
-        .update({'time_out': endedAtIso}) // endedAtIso should be UTC
+        .update({'time_out': endedAtIso}) 
         .eq('session_id', _sessionId!)
         .inFilter('status', ['present', 'late'])
         .filter('time_out', 'is', null);
@@ -704,6 +803,50 @@ class _EndSessionState extends State<EndSession> {
     await supabase.from('attendance_history').insert(historyPayload);
   }
 
+  // ✅ Realtime Attendance Refresh
+  Future<void> _loadAttendanceOnly() async {
+    if (_sessionId == null) return;
+    try {
+      final supabase = Supabase.instance.client;
+      final attendRows = await supabase
+          .from('attendance')
+          .select('student_id, status, time_in, students(first_name,last_name,student_number,avatar_url)')
+          .eq('session_id', _sessionId!)
+          .order('time_in', ascending: true);
+
+      if (!mounted) return;
+      setState(() {
+        _attendance = (attendRows as List).cast<Map<String, dynamic>>();
+      });
+    } catch (e) {
+      debugPrint('Error loading realtime attendance: $e');
+    }
+  }
+
+  // ✅ Realtime Enrollment Refresh
+  Future<void> _loadEnrollmentsOnly() async {
+    try {
+      final supabase = Supabase.instance.client;
+      final enrolledRows = await supabase
+          .from('class_enrollments')
+          .select('student_id, status, joined_at, students(first_name, last_name, student_number, avatar_url, program, year_level, section)')
+          .eq('class_id', widget.classId)
+          .order('joined_at', ascending: true);
+
+      if (!mounted) return;
+      final allEnrollments = (enrolledRows as List).cast<Map<String, dynamic>>();
+      setState(() {
+        _enrolled = allEnrollments.where((e) => e['status'] == 'enrolled').toList();
+        _pendingEnrollments = allEnrollments.where((e) => e['status'] == 'pending').toList();
+        
+        final pendingIds = _pendingEnrollments.map((e) => e['student_id'].toString()).toSet();
+        _selectedPendingIds.retainWhere((id) => pendingIds.contains(id));
+      });
+    } catch (e) {
+      debugPrint('Error loading realtime enrollments: $e');
+    }
+  }
+
   Future<void> _loadData() async {
     setState(() {
       _loadingAttendance = true;
@@ -713,15 +856,16 @@ class _EndSessionState extends State<EndSession> {
     try {
       final supabase = Supabase.instance.client;
 
+      // When read-only (Ended), we look for 'ended' status. Otherwise 'started'.
       final sessionRow = await supabase
           .from('class_sessions')
           .select('id, started_at, status')
           .eq('class_id', widget.classId)
-          .inFilter('status', ['started'])
+          .inFilter('status', widget.isReadOnly ? ['ended'] : ['started'])
           .order('started_at', ascending: false)
           .maybeSingle();
 
-      if (sessionRow == null) throw 'No active session (started) found.';
+      if (sessionRow == null) throw 'No ${widget.isReadOnly ? 'finalized' : 'active'} session found.';
 
       _sessionId = sessionRow['id'] as String?;
       final startedAtStr = sessionRow['started_at'] as String?;
@@ -729,11 +873,14 @@ class _EndSessionState extends State<EndSession> {
 
       final enrolledRows = await supabase
           .from('class_enrollments')
-          .select('student_id, students(first_name,last_name,student_number,avatar_url)')
+          .select('student_id, status, joined_at, students(first_name,last_name,student_number,avatar_url, program, year_level, section)')
           .eq('class_id', widget.classId)
           .order('joined_at', ascending: true);
 
-      _enrolled = (enrolledRows as List).cast<Map<String, dynamic>>();
+      final allEnrollments = (enrolledRows as List).cast<Map<String, dynamic>>();
+      
+      _enrolled = allEnrollments.where((e) => e['status'] == 'enrolled').toList();
+      _pendingEnrollments = allEnrollments.where((e) => e['status'] == 'pending').toList();
 
       final attendRows = await supabase
           .from('attendance')
@@ -862,6 +1009,140 @@ class _EndSessionState extends State<EndSession> {
     }
   }
 
+  Future<void> _handleApproveStudent(String studentId, String studentName) async {
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        title: const Text('Confirm Approval', textAlign: TextAlign.center, style: TextStyle(fontSize: 16)),
+        content: Text('Accept $studentName into this class?', textAlign: TextAlign.center, style: const TextStyle(fontSize: 13)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel', style: TextStyle(color: Colors.black))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF018832), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Approve', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    _showLoadingDialog('Approving $studentName...');
+
+    final supabase = Supabase.instance.client;
+    try {
+      await supabase
+          .from('class_enrollments')
+          .update({'status': 'enrolled'}) 
+          .eq('class_id', widget.classId)
+          .eq('student_id', studentId);
+      
+      // ✅ Queue Notification
+      await supabase.from('notification_queue').insert({
+        'target_role': 'student',
+        'target_user_id': studentId,
+        'type': 'enrollment_approved',
+        'class_id': widget.classId,
+        'title': 'Enrollment Approved!',
+        'body': 'You have been accepted into ${widget.courseTitle}.',
+        'status': 'pending',
+      });
+
+      // Trigger processing
+      try {
+        await supabase.functions.invoke('process_notification', body: {'reason': 'start_session'});
+      } catch (_) {}
+
+      await _loadData();
+      
+      if (!mounted) return;
+      Navigator.pop(context); // Dismiss loading
+      
+      await _showSuccessModal('$studentName has been approved and enrolled.');
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context); // Dismiss loading
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error approving student: $e')),
+      );
+    }
+  }
+
+  Future<void> _handleBulkApprove() async {
+    if (_selectedPendingIds.isEmpty) return;
+
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        title: const Text('Bulk Approval', textAlign: TextAlign.center, style: TextStyle(fontSize: 16)),
+        content: Text('Approve all ${_selectedPendingIds.length} selected students?', textAlign: TextAlign.center, style: const TextStyle(fontSize: 13)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel', style: TextStyle(color: Colors.black))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF018832), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Approve All', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    _showLoadingDialog('Approving selected students...');
+
+    final supabase = Supabase.instance.client;
+    try {
+      final List<String> ids = _selectedPendingIds.toList();
+      final count = ids.length;
+      
+      await supabase
+          .from('class_enrollments')
+          .update({'status': 'enrolled'})
+          .eq('class_id', widget.classId)
+          .inFilter('student_id', ids);
+      
+      // ✅ Queue Notifications
+      final notificationPayload = ids.map((studentId) => {
+        'target_role': 'student',
+        'target_user_id': studentId,
+        'type': 'enrollment_approved',
+        'class_id': widget.classId,
+        'title': 'Enrollment Approved!',
+        'body': 'You have been accepted into ${widget.courseTitle}.',
+        'status': 'pending',
+      }).toList();
+
+      await supabase.from('notification_queue').insert(notificationPayload);
+
+      // Trigger processing
+      try {
+        await supabase.functions.invoke('process_notification', body: {'reason': 'start_session'});
+      } catch (_) {}
+
+      await _loadData();
+      
+      if (!mounted) return;
+      Navigator.pop(context); // Dismiss loading
+      setState(() {
+        _selectedPendingIds.clear();
+      });
+
+      await _showSuccessModal('$count students have been approved and enrolled.');
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context); // Dismiss loading
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error approving students: $e')),
+      );
+    }
+  }
+
   Widget studentRowFromEnrollment(Map<String, dynamic> enrollRow) {
     final s = enrollRow['students'] as Map<String, dynamic>?;
     final sid = enrollRow['student_id'] as String;
@@ -873,10 +1154,9 @@ class _EndSessionState extends State<EndSession> {
     final isLate = st == 'late';
     final isAbsent = st == 'absent';
     final isExcused = st == 'excused';
-    final isPending = st == null || st == 'pending';
 
     return InkWell(
-      onTap: () => _openPendingActions(studentId: sid, studentName: name, currentStatus: st),
+      onTap: widget.isReadOnly ? null : () => _openPendingActions(studentId: sid, studentName: name, currentStatus: st),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Column(
@@ -925,8 +1205,10 @@ class _EndSessionState extends State<EndSession> {
                           fontSize: 12,
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      const Icon(Icons.edit, size: 14, color: Colors.grey),
+                      if (!widget.isReadOnly) ...[
+                        const SizedBox(width: 8),
+                        const Icon(Icons.edit, size: 14, color: Colors.grey),
+                      ]
                     ],
                   )
                 ],
@@ -939,319 +1221,562 @@ class _EndSessionState extends State<EndSession> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: () async {
-            await _loadData();
-          },
-          child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // Header
-                  AttendlyBlueHeader(
-                    onBack: false,
-                    courseTitle: widget.courseTitle,
-                    courseCode: widget.courseCode,
-                    professor: widget.professor,
-                    icon: CupertinoIcons.book,
-                    iconColor: const Color(0xFFFBD600),
-                  ),
-                  const SizedBox(height: 20),
-                  ClassInfo(
-                    classCode: widget.classCode,
-                    room: widget.room,
-                    sched: widget.sched,
-                  ),
-                  const SizedBox(height: 10),
+  Widget buildPendingEnrollmentRow(Map<String, dynamic> enrollRow) {
+    final s = enrollRow['students'] as Map<String, dynamic>?;
+    final sid = enrollRow['student_id'] as String;
+    final name = s == null ? 'Unknown Student' : '${s['first_name'] ?? ''} ${s['last_name'] ?? ''}'.trim();
+    final avatarUrl = s?['avatar_url'] as String?;
+    final program = s?['program'] as String?;
+    final yearLevel = (s?['year_level'] ?? '').toString();
+    final section = (s?['section'] ?? '').toString();
 
-                  // Back Button
-                  Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 30),
-                    child: Row(
-                      children: [
-                        IconButton(
-                          onPressed: () => Navigator.pop(context),
-                          icon: const Icon(CupertinoIcons.arrow_left),
-                        ),
-                        const Text('Back')
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 10),
+    // Extract abbreviation from program (e.g., "BSIT - Bachelor of...")
+    String progAbbr = '';
+    if (program != null && program.isNotEmpty) {
+      progAbbr = program.split('-').first.trim();
+    }
 
-                  // End Session Container
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    width: 350,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadiusGeometry.circular(8),
-                      boxShadow: const [
-                        BoxShadow(color: Colors.black26, blurRadius: 2, offset: Offset(0, 4)),
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'End Class Session',
-                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 10),
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: const Color(0x509BC9F5),
-                            borderRadius: BorderRadiusGeometry.circular(8),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(CupertinoIcons.clock, size: 20, color: Color(0xFF043B6F)),
-                              const SizedBox(width: 5),
-                              Text(
-                                _loadingSessionInfo
-                                    ? 'Loading session time...'
-                                    : _startedAt == null
-                                    ? 'Session Started'
-                                    : 'Session Started at ${DateFormat('h:mm a').format(_startedAt!.toLocal())}',
-                                style: const TextStyle(fontSize: 11, color: Color(0xFF043B6F)),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Center(
-                          child: OutlinedButton(
-                            style: OutlinedButton.styleFrom(
-                              backgroundColor: const Color(0xFFB60202),
-                              side: BorderSide.none,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            ),
-                            onPressed: _ending ? null : _confirmEndSession,
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  if (_ending) ...[
-                                    const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
-                                    const SizedBox(width: 10),
-                                  ],
-                                  Text(_ending ? 'Ending...' : 'End Class Session', style: const TextStyle(color: Colors.white)),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+    final String infoText = progAbbr.isNotEmpty ? '$progAbbr $yearLevel-$section' : '';
 
-                  const SizedBox(height: 15),
-
-                  // RE-VERIFY BUTTON & TIMER UI
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        children: [
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              children: [
+                if (!widget.isReadOnly) ...[
                   SizedBox(
-                    width: 350,
-                    child: _isReverifyActive
-                        ? Container(
-                      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFF4E5), // Light Orange bg
-                        border: Border.all(color: Colors.orange),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    width: 24,
+                    child: Checkbox(
+                      value: _selectedPendingIds.contains(sid),
+                      onChanged: (val) {
+                        setState(() {
+                          if (val == true) {
+                            _selectedPendingIds.add(sid);
+                          } else {
+                            _selectedPendingIds.remove(sid);
+                          }
+                        });
+                      },
+                      activeColor: const Color(0xFF018832),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: (avatarUrl != null && avatarUrl.trim().isNotEmpty)
+                      ? Image.network(
+                    avatarUrl,
+                    width: 20,
+                    height: 20,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Image.asset('assets/avatar.png', width: 20, height: 20),
+                  )
+                      : Image.asset('assets/avatar.png', width: 20, height: 20),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(name.isEmpty ? 'Unknown Student' : name, style: const TextStyle(fontSize: 12)),
+                      Row(
                         children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Re-verification Active',
-                                style: TextStyle(
-                                  color: Colors.orange,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
-                                ),
-                              ),
-                              Text(
-                                'Time left: $timerText',
-                                style: const TextStyle(
-                                  color: Colors.red,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 18,
-                                ),
-                              ),
-                            ],
-                          ),
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.red,
-                              foregroundColor: Colors.white,
-                              elevation: 0,
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                          if (infoText.isNotEmpty)
+                            Text(
+                              '$infoText  •  ',
+                              style: const TextStyle(fontSize: 8, color: Colors.grey, fontWeight: FontWeight.w600),
                             ),
-                            onPressed: _processingAbsents ? null : () {
-                              // Manual stop early
-                              final sid = _sessionId!;
-                              _globalReverifyTimers[sid]?.cancel();
-                              _globalReverifyTimers.remove(sid);
-                              _globalReverifySeconds.remove(sid);
-                              _markUnverifiedAsAbsent(reason: 'Manual stop by professor');
-                            },
-                            child: _processingAbsents 
-                                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                : const Text('Stop Now', style: TextStyle(fontSize: 12)),
-                          )
+                          const Text(
+                            'Pending Approval',
+                            style: TextStyle(fontSize: 8, color: Colors.orange, fontWeight: FontWeight.bold),
+                          ),
                         ],
                       ),
-                    )
-                        : OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        backgroundColor: const Color(0xFFEDF4FC),
-                        side: const BorderSide(color: Color(0xFF004280)),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      onPressed: _reverifying ? null : _reverifySession,
-                      icon: _reverifying
-                          ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                          : const Icon(CupertinoIcons.arrow_2_circlepath,
-                          color: Color(0xFF004280), size: 18),
-                      label: Text(
-                        _reverifying ? 'Sending Notifications...' : 'Re-verify Students (10m Timer)',
-                        style: const TextStyle(
-                          color: Color(0xFF004280),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
+                    ],
                   ),
-
-                  const SizedBox(height: 20),
-
-                  // Attendance Stats
+                ),
+                if (!widget.isReadOnly)
                   SizedBox(
-                    width: 350,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        Container(
-                          width: 90, height: 90,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadiusGeometry.circular(8),
-                            color: Colors.white,
-                            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2, offset: Offset(0, 4))],
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text('$presentCount', style: const TextStyle(fontSize: 30)),
-                              const Text('Present', style: TextStyle(fontSize: 12)),
-                            ],
-                          ),
-                        ),
-                        Container(
-                          width: 90, height: 90,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadiusGeometry.circular(8),
-                            color: Colors.white,
-                            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2, offset: Offset(0, 4))],
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text('$pendingCount', style: const TextStyle(fontSize: 28)),
-                              const Text('Pending', style: TextStyle(fontSize: 12)),
-                            ],
-                          ),
-                        ),
-                        Container(
-                          width: 90, height: 90,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadiusGeometry.circular(8),
-                            color: Colors.white,
-                            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2, offset: Offset(0, 4))],
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text('$totalStudents', style: const TextStyle(fontSize: 30)),
-                              const Text('Total', style: TextStyle(fontSize: 12)),
-                            ],
-                          ),
-                        ),
-                      ],
+                    height: 24,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF018832),
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                        elevation: 0,
+                      ),
+                      onPressed: () => _handleApproveStudent(sid, name),
+                      child: const Text('Approve', style: TextStyle(color: Colors.white, fontSize: 10)),
                     ),
-                  ),
+                  )
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
+      ),
+    );
+  }
 
-                  const SizedBox(height: 20),
+  @override
+  Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.of(context).size.height;
 
-                  // Attendance Log
-                  Container(
-                    width: 350,
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadiusGeometry.circular(8),
-                    ),
-                    child: Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('Attendance Log'),
-                            Row(
+    return Scaffold(
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Fixed Header
+            AttendlyBlueHeader(
+              onBack: false,
+              courseTitle: widget.courseTitle,
+              courseCode: widget.courseCode,
+              professor: widget.professor,
+              icon: CupertinoIcons.book,
+              iconColor: const Color(0xFFFBD600),
+            ),
+
+            // Scrollable Body
+            Expanded(
+              child: Scrollbar(
+                controller: _scrollController,
+                thumbVisibility: true,
+                radius: const Radius.circular(8),
+                thickness: 6,
+                child: RefreshIndicator(
+                  onRefresh: () async {
+                    await _loadData();
+                  },
+                  child: ListView(
+                    controller: _scrollController,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          const SizedBox(height: 20),
+                          ClassInfo(
+                            classCode: widget.classCode,
+                            room: widget.room,
+                            sched: widget.sched,
+                          ),
+                          const SizedBox(height: 10),
+
+                          // Back Button
+                          Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 30),
+                            child: Row(
                               children: [
-                                const Icon(Icons.people_alt_outlined),
-                                Text('$presentCount/$totalStudents'),
+                                IconButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  icon: const Icon(CupertinoIcons.arrow_left),
+                                ),
+                                const Text('Back')
                               ],
                             ),
-                          ],
-                        ),
-                        const Divider(color: Colors.black),
-                        SizedBox(
-                          height: 110,
-                          child: Scrollbar(
-                            controller: _scrollController,
-                            thumbVisibility: true,
-                            radius: const Radius.circular(8),
-                            thickness: 4,
-                            child: _loadingAttendance
-                                ? const Center(child: CircularProgressIndicator())
-                                : ListView.builder(
-                              controller: _scrollController,
-                              physics: const ClampingScrollPhysics(),
-                              itemCount: _enrolled.length,
-                              itemBuilder: (context, index) {
-                                return studentRowFromEnrollment(_enrolled[index]);
-                              },
+                          ),
+                          const SizedBox(height: 10),
+
+                          // End Session Container
+                          Container(
+                            padding: const EdgeInsets.all(20),
+                            width: 350,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadiusGeometry.circular(8),
+                              boxShadow: const [
+                                BoxShadow(color: Colors.black26, blurRadius: 2, offset: Offset(0, 4)),
+                              ],
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  widget.isReadOnly ? 'Session Finalized' : 'End Class Session',
+                                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                                ),
+                                const SizedBox(height: 10),
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0x509BC9F5),
+                                    borderRadius: BorderRadiusGeometry.circular(8),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(CupertinoIcons.clock, size: 20, color: Color(0xFF043B6F)),
+                                      const SizedBox(width: 5),
+                                      Text(
+                                        _loadingSessionInfo
+                                            ? 'Loading session time...'
+                                            : _startedAt == null
+                                            ? 'Session Started'
+                                            : 'Session Started at ${DateFormat('h:mm a').format(_startedAt!.toLocal())}',
+                                        style: const TextStyle(fontSize: 11, color: Color(0xFF043B6F)),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                if (!widget.isReadOnly)
+                                  Center(
+                                    child: OutlinedButton(
+                                      style: OutlinedButton.styleFrom(
+                                        backgroundColor: const Color(0xFFB60202),
+                                        side: BorderSide.none,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                      ),
+                                      onPressed: _ending ? null : _confirmEndSession,
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            if (_ending) ...[
+                                              const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+                                              const SizedBox(width: 10),
+                                            ],
+                                            Text(_ending ? 'Ending...' : 'End Class Session', style: const TextStyle(color: Colors.white)),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                else
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.symmetric(vertical: 10),
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey[200],
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Center(
+                                      child: Text(
+                                        'Attendance Finalized',
+                                        style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold),
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
                           ),
-                        ),
-                      ],
-                    ),
+
+                          const SizedBox(height: 15),
+
+                          // RE-VERIFY BUTTON & TIMER UI
+                          if (!widget.isReadOnly)
+                            SizedBox(
+                              width: 350,
+                              child: _isReverifyActive
+                                  ? Container(
+                                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFFF4E5), 
+                                  border: Border.all(color: Colors.orange),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const Text(
+                                          'Re-verification Active',
+                                          style: TextStyle(
+                                            color: Colors.orange,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                        Text(
+                                          'Time left: $timerText',
+                                          style: const TextStyle(
+                                            color: Colors.red,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 18,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    ElevatedButton(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.red,
+                                        foregroundColor: Colors.white,
+                                        elevation: 0,
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                      ),
+                                      onPressed: _processingAbsents ? null : () {
+                                        final sid = _sessionId!;
+                                        _globalReverifyTimers[sid]?.cancel();
+                                        _globalReverifyTimers.remove(sid);
+                                        _globalReverifySeconds.remove(sid);
+                                        _markUnverifiedAsAbsent(reason: 'Manual stop by professor');
+                                      },
+                                      child: _processingAbsents 
+                                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                          : const Text('Stop Now', style: TextStyle(fontSize: 12)),
+                                    )
+                                  ],
+                                ),
+                              )
+                                  : OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFEDF4FC),
+                                  side: const BorderSide(color: Color(0xFF004280)),
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                onPressed: _reverifying ? null : _reverifySession,
+                                icon: _reverifying
+                                    ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                                    : const Icon(CupertinoIcons.arrow_2_circlepath,
+                                    color: Color(0xFF004280), size: 18),
+                                label: Text(
+                                  _reverifying ? 'Sending Notifications...' : 'Re-verify Students (10m Timer)',
+                                  style: const TextStyle(
+                                    color: Color(0xFF004280),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                          const SizedBox(height: 20),
+
+                          // Attendance Stats
+                          SizedBox(
+                            width: 350,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceAround,
+                              children: [
+                                Container(
+                                  width: 90, height: 90,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadiusGeometry.circular(8),
+                                    color: Colors.white,
+                                    boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2, offset: Offset(0, 4))],
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.center,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text('$presentCount', style: const TextStyle(fontSize: 30)),
+                                      const Text('Present', style: TextStyle(fontSize: 12)),
+                                    ],
+                                  ),
+                                ),
+                                Container(
+                                  width: 90, height: 90,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadiusGeometry.circular(8),
+                                    color: Colors.white,
+                                    boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2, offset: Offset(0, 4))],
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.center,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text('$pendingCount', style: const TextStyle(fontSize: 28)),
+                                      const Text('Pending', style: TextStyle(fontSize: 12)),
+                                    ],
+                                  ),
+                                ),
+                                Container(
+                                  width: 90, height: 90,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadiusGeometry.circular(8),
+                                    color: Colors.white,
+                                    boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2, offset: Offset(0, 4))],
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.center,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text('$totalStudents', style: const TextStyle(fontSize: 30)),
+                                      const Text('Total', style: TextStyle(fontSize: 12)),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 20),
+
+                          // Attendance Log
+                          Container(
+                            width: 350,
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Column(
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text('Attendance Log', style: TextStyle(fontWeight: FontWeight.bold)),
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.people_alt_outlined),
+                                        Text('$presentCount/$totalStudents'),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                                const Divider(color: Colors.black26),
+                                SizedBox(
+                                  height: _viewAllLog ? screenHeight * .25 : screenHeight * .12,
+                                  child: _loadingAttendance
+                                      ? const Center(child: CircularProgressIndicator())
+                                      : Scrollbar(
+                                          controller: _logScrollController,
+                                          thumbVisibility: _viewAllLog,
+                                          child: ListView.builder(
+                                            controller: _logScrollController,
+                                            shrinkWrap: true,
+                                            itemCount: _viewAllLog ? _enrolled.length : (_enrolled.length > 3 ? 3 : _enrolled.length),
+                                            itemBuilder: (context, index) {
+                                              return studentRowFromEnrollment(_enrolled[index]);
+                                            },
+                                          ),
+                                        ),
+                                ),
+                                if (_enrolled.length > 3)
+                                  Center(
+                                    child: TextButton(
+                                      onPressed: () => setState(() => _viewAllLog = !_viewAllLog),
+                                      child: Text(
+                                        !_viewAllLog ? 'View all students' : 'Show less',
+                                        style: const TextStyle(fontSize: 11, color: Color(0xFF105698)),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 20),
+
+                          // PENDING ENROLLMENTS
+                          Container(
+                            width: 350,
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(8),
+                              boxShadow: const [
+                                BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2)),
+                              ],
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text('Pending Approvals', style: TextStyle(fontWeight: FontWeight.bold)),
+                                    Text('${_pendingEnrollments.length}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
+                                  ],
+                                ),
+                                const Divider(color: Colors.black26),
+                                
+                                if (!widget.isReadOnly && _pendingEnrollments.isNotEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.all(5),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        InkWell(
+                                          onTap: () {
+                                            setState(() {
+                                              if (_selectedPendingIds.length == _pendingEnrollments.length) {
+                                                _selectedPendingIds.clear();
+                                              } else {
+                                                _selectedPendingIds.clear();
+                                                _selectedPendingIds.addAll(
+                                                  _pendingEnrollments.map((e) => e['student_id'].toString())
+                                                );
+                                              }
+                                            });
+                                          },
+                                          child: Text(
+                                            _selectedPendingIds.length == _pendingEnrollments.length ? 'Deselect All' : 'Select All',
+                                            style: const TextStyle(fontSize: 11, color: Color(0xFF105698))
+                                          ),
+                                        ),
+                                        if (_selectedPendingIds.isNotEmpty)
+                                          ElevatedButton(
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: const Color(0xFF018832),
+                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                              elevation: 0,
+                                            ),
+                                            onPressed: _handleBulkApprove,
+                                            child: Text('Approve (${_selectedPendingIds.length})', style: const TextStyle(color: Colors.white, fontSize: 11)),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+
+                                if (_pendingEnrollments.isEmpty)
+                                  const Padding(
+                                    padding: EdgeInsets.symmetric(vertical: 10),
+                                    child: Center(child: Text('No pending approvals.', style: TextStyle(fontSize: 11, color: Colors.grey))),
+                                  )
+                                else ...[
+                                  SizedBox(
+                                    height: _viewAllPending ? screenHeight * .3 : screenHeight * .21,
+                                    child: Scrollbar(
+                                      controller: _pendingScrollController,
+                                      thumbVisibility: _viewAllPending,
+                                      child: ListView.builder(
+                                        controller: _pendingScrollController,
+                                        shrinkWrap: true,
+                                        itemCount: _viewAllPending ? _pendingEnrollments.length : (_pendingEnrollments.length > 3 ? 3 : _pendingEnrollments.length),
+                                        itemBuilder: (context, index) {
+                                          return buildPendingEnrollmentRow(_pendingEnrollments[index]);
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                  if (_pendingEnrollments.length > 3)
+                                    Center(
+                                      child: TextButton(
+                                        onPressed: () => setState(() => _viewAllPending = !_viewAllPending),
+                                        child: Text(
+                                          !_viewAllPending ? 'View all pending' : 'Show less',
+                                          style: const TextStyle(fontSize: 11, color: Color(0xFF105698)),
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 30),
+                        ],
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

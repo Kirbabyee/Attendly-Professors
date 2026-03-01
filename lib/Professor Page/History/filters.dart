@@ -283,6 +283,7 @@ class _DataFilterState extends State<DataFilter> {
             width: 340,
             height: 360,
             child: SfDateRangePicker(
+              maxDate: DateTime.now(),
               selectionMode: DateRangePickerSelectionMode.range,
               startRangeSelectionColor: const Color(0xFF004280),
               endRangeSelectionColor: const Color(0xFF004280),

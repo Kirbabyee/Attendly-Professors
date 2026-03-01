@@ -68,12 +68,16 @@ class _ClassSessionState extends State<ClassSession> {
 
   @override
   Widget build(BuildContext context) {
+    final bool isEnded = _session == 'Ended';
+    final bool isStarted = _session == 'Session Started';
+
     return Scaffold(
       body: SafeArea(
-        child: _session == 'Pending'
-            ? StartSession(
+        child: (isStarted || isEnded)
+            ? EndSession(
           students: widget.students,
-          onStarted: _handleStarted,
+          onEnded: _handleEnded,
+          isReadOnly: isEnded,
 
           // pass data
           classId: widget.classId,
@@ -84,9 +88,9 @@ class _ClassSessionState extends State<ClassSession> {
           room: widget.room,
           sched: widget.sched,
         )
-            : EndSession(
+            : StartSession(
           students: widget.students,
-          onEnded: _handleEnded,
+          onStarted: _handleStarted,
 
           // pass data
           classId: widget.classId,

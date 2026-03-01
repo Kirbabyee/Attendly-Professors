@@ -46,6 +46,37 @@ class _LoginState extends State<Login> {
     });
   }
 
+  void _showLockedDialog(int seconds) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          title: Row(
+            children: const [
+              Icon(Icons.lock_clock_outlined, color: Colors.red),
+              SizedBox(width: 10),
+              Text('Login Locked', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            ],
+          ),
+          content: Text(
+            'Too many failed attempts. Please wait for $seconds seconds before trying again.',
+            style: const TextStyle(fontSize: 14),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Got it', style: TextStyle(color: Color(0xFF004280), fontWeight: FontWeight.bold)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   void dispose() {
     _lockTimer?.cancel();
@@ -311,12 +342,17 @@ class _LoginState extends State<Login> {
                     child: OutlinedButton(
                       style: OutlinedButton.styleFrom(
                         minimumSize: Size(150, 40),
-                        backgroundColor: Color(0xFF004280),
+                        backgroundColor: _locked ? Colors.grey : Color(0xFF004280),
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadiusGeometry.circular(6)
                         )
                       ),
-                        onPressed: _locked ? null : () async {
+                        onPressed: () async {
+                          if (_locked) {
+                            _showLockedDialog(_lockSeconds);
+                            return;
+                          }
+
                           if (!_formKey.currentState!.validate()) return;
 
                           setState(() {
@@ -556,9 +592,7 @@ class _LoginState extends State<Login> {
                               if (locked && lockSeconds > 0) {
                                 _startLock(lockSeconds);
                                 if (!mounted) return;
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Too many attempts. Locked for ${lockSeconds}s.')),
-                                );
+                                _showLockedDialog(lockSeconds);
                               }
                             } catch (_) {
                               // ignore (anti-enumeration safe)

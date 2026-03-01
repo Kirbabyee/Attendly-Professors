@@ -149,54 +149,6 @@ class _DashboardState extends State<Dashboard> {
         .subscribe();
   }
 
-  bool _canStartFromSched10mins(String sched) {
-    final now = DateTime.now();
-    final dayStr = sched.split(':').first.trim().toLowerCase();
-
-    const map = {
-      'sunday': DateTime.sunday,
-      'monday': DateTime.monday,
-      'tuesday': DateTime.tuesday,
-      'wednesday': DateTime.wednesday,
-      'thursday': DateTime.thursday,
-      'friday': DateTime.friday,
-      'saturday': DateTime.saturday,
-    };
-
-    final schedWeekday = map[dayStr];
-    if (schedWeekday == null) return false;
-
-    final startMin = _startMinutesFromSched(sched);
-    final endMinRaw = _endMinutesFromSched(sched);
-    if (startMin == 9999 || endMinRaw == 9999) return false;
-
-    final nowMin = now.hour * 60 + now.minute;
-
-    final overnight = endMinRaw <= startMin;
-    final endMin = overnight ? endMinRaw + 1440 : endMinRaw;
-
-    //  startable window = 10 mins before start
-    final startableFrom = startMin - 10;
-
-    int prevDay(int d) => d == DateTime.monday ? DateTime.sunday : d - 1;
-    int nextDay(int d) => d == DateTime.sunday ? DateTime.monday : d + 1;
-
-    int? nowAdj;
-
-    if (now.weekday == schedWeekday) {
-      nowAdj = nowMin;
-    } else if (startableFrom < 0 && now.weekday == prevDay(schedWeekday)) {
-      nowAdj = nowMin - 1440; // spill to prev day (midnight start)
-    } else if (overnight && now.weekday == nextDay(schedWeekday)) {
-      nowAdj = nowMin + 1440; // continuation day
-    } else {
-      return false;
-    }
-
-    if (nowAdj >= endMin) return false;
-    return nowAdj >= startableFrom;
-  }
-
   Future<void> _showShareClassCodeModal(String classCode) async {
     await showDialog(
       context: context,
@@ -649,13 +601,9 @@ class _DashboardState extends State<Dashboard> {
     ) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isUpcoming = session == 'Upcoming' || session == 'Ended';
-    final s = session.trim();
-
-    final isEnded = s == 'Ended' || s == 'System Ended' || s == 'system ended';
-    final isStarted = s == 'Session Started';
-    final isPending = s == 'Pending';
-
-    final showArrow = !isEnded && (isStarted || (isPending && _canStartFromSched10mins(sched)));
+    
+    // ✅ Arrow button is now always visible regardless of status.
+    const showArrow = true;
 
     return Opacity(
       opacity: isUpcoming ? 0.5 : 1.0,

@@ -197,47 +197,44 @@ class _NewPasswordState extends State<NewPassword> {
     final isKeyboard = MediaQuery.of(context).viewInsets.bottom != 0;
 
     return Scaffold(
-      resizeToAvoidBottomInset: false,
+      resizeToAvoidBottomInset: true,
       backgroundColor: const Color(0xFFEAF5FB),
       body: Stack(
         children: [
           Stack(
             children: [
-              Visibility(
-                visible: (!isKeyboard),
-                child: Positioned(
+              if (!isKeyboard) // Itago ang background shapes kapag may keyboard para mas maluwag
+                Positioned(
                   top: screenHeight > 640 ? 0 : -50,
                   left: 0,
                   right: 0,
-                  child: Image.asset(
-                    'assets/Ellipse 2.png',
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                  ),
+                  child: Image.asset('assets/Ellipse 2.png', width: double.infinity, fit: BoxFit.cover),
                 ),
-              ),
-              Positioned(
-                top: screenHeight > 640 ? 0 : -50,
-                left: 0,
-                right: 0,
-                child: Image.asset(
-                  'assets/Ellipse 1.png',
-                  width: double.infinity,
-                  fit: BoxFit.cover,
+              if (!isKeyboard)
+                Positioned(
+                  top: screenHeight > 640 ? 0 : -50,
+                  left: 0,
+                  right: 0,
+                  child: Image.asset('assets/Ellipse 1.png', width: double.infinity, fit: BoxFit.cover),
                 ),
-              ),
             ],
           ),
           Center(
             child: SingleChildScrollView(
+              padding: EdgeInsets.symmetric(horizontal: screenWidth * .085),
               child: Column(
                 children: [
-                  SizedBox(height: !isKeyboard ? screenHeight * .05 : screenHeight * .0),
+                  SizedBox(height: !isKeyboard ? screenHeight * .18 : 20),
+                  Image.asset(
+                    'assets/logo.png',
+                    width: screenWidth * .9, // Paliitin ang logo kapag may keyboard
+                  ),
+                  SizedBox(height: screenHeight * .013),
                   Text(
-                    'Forgot Password',
+                    'Change Password',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: screenHeight * .02),
                   ),
-                  SizedBox(height: screenHeight * .018),
+                  SizedBox(height: !isKeyboard ? screenHeight * .03 : 15),
 
                   Form(
                     key: _formKey,
