@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../utils/error_handler.dart';
+
 class ChangeEmail extends StatefulWidget {
   final String currentEmail;
 
@@ -228,7 +230,7 @@ class _ChangeEmailState extends State<ChangeEmail> {
                     },
                     icon: const Icon(CupertinoIcons.arrow_left),
                   ),
-                  Text('Back'),
+                  const Text('Back'),
                 ],
               ),
             ),
@@ -274,7 +276,7 @@ class _ChangeEmailState extends State<ChangeEmail> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Password', style: TextStyle(fontSize: 12)),
+              const Text('Password', style: TextStyle(fontSize: 12)),
               const SizedBox(height: 6),
               TextFormField(
                 controller: _passwordController,
@@ -285,7 +287,7 @@ class _ChangeEmailState extends State<ChangeEmail> {
                 },
                 decoration: _input(
                   'Enter your password',
-                  errorText: _pwError != null ? 'Password incorrect' : null, // only shows when server says incorrect
+                  errorText: _pwError, // Lalabas dito ang ErrorHandler message
                   suffix: IconButton(
                     onPressed: () => setState(() => showPassword = !showPassword),
                     icon: Icon(showPassword ? Icons.visibility : Icons.visibility_off, size: 18),
@@ -329,7 +331,7 @@ class _ChangeEmailState extends State<ChangeEmail> {
                 if (!mounted) return;
                 setState(() => step = 2);
               } catch (e) {
-                final msg = e.toString().replaceFirst('Exception: ', '');
+                final msg = ErrorHandler.getMessage(e);
                 if (!mounted) return;
                 setState(() => _pwError = msg);
               } finally {
@@ -453,10 +455,12 @@ class _ChangeEmailState extends State<ChangeEmail> {
 
                 Navigator.pop(context, newEmail);
               } catch (e) {
-                final msg = e.toString().replaceFirst('Exception: ', '');
+                final msg = ErrorHandler.getMessage(e);
 
                 // Check kung ang error ay tungkol sa existing email
-                if (msg.toLowerCase().contains('already registered') || msg.toLowerCase().contains('exists')) {
+                if (msg.toLowerCase().contains('already registered') || 
+                    msg.toLowerCase().contains('exists') ||
+                    e.toString().toLowerCase().contains('already registered')) {
                   setState(() => _emailError = 'Email already registered to another account');
                 } else {
                   // Para sa ibang errors tulad ng connection, pwede pa rin ang toast
@@ -646,7 +650,7 @@ class _OtpDialogState extends State<_OtpDialog> {
                 onChanged: (_) {
                   if (_otpError != null) setState(() => _otpError = null);
                 },
-                decoration: InputDecoration(
+                decoration: const InputDecoration(
                   border: InputBorder.none,
                   hintText: '000000',
                 ),
@@ -660,7 +664,7 @@ class _OtpDialogState extends State<_OtpDialog> {
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      'Invalid Error',
+                      _otpError!,
                       style: const TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.w600),
                     ),
                   ),
@@ -701,10 +705,10 @@ class _OtpDialogState extends State<_OtpDialog> {
                         if (!mounted) return;
                         Navigator.pop(context, true);
                       } catch (e) {
-                        final msg = e.toString().replaceFirst('Exception: ', '');
+                        final msg = ErrorHandler.getMessage(e);
 
                         if (!mounted) return;
-                        setState(() => _otpError = msg.isEmpty ? 'Invalid OTP' : msg);
+                        setState(() => _otpError = msg);
 
                         // optional: haptic feedback
                         HapticFeedback.mediumImpact();
@@ -740,7 +744,7 @@ class _OtpDialogState extends State<_OtpDialog> {
                 } catch (e) {
                   if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+                    SnackBar(content: Text(ErrorHandler.getMessage(e))),
                   );
                 } finally {
                   if (mounted) setState(() => _resending = false);

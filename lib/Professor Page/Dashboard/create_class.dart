@@ -144,8 +144,23 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
 
   // ✅ REAL-TIME CONFLICT VALIDATION
   Future<void> _updateScheduleConflict() async {
+    if (mounted) setState(() => _conflictError = null);
+
+    // 1. Time Order Validation (Blocking Overnight)
+    final startMin = _to24hMinutes(_startHour, _startMinute, _startIsAm);
+    final endMin = _to24hMinutes(_endHour, _endMinute, _endIsAm);
+
+    if (endMin < startMin) {
+      if (mounted) setState(() => _conflictError = "Invalid Time: End time is earlier than start time.");
+      return;
+    }
+    if (endMin == startMin) {
+      if (mounted) setState(() => _conflictError = "Invalid Time: Start and end time cannot be the same.");
+      return;
+    }
+
+    // 2. Room Conflict Check
     if (_selectedDay == null || _room.text.isEmpty) {
-      if (mounted) setState(() => _conflictError = null);
       return;
     }
 
@@ -201,57 +216,6 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
     var h = hour12 % 12;
     if (!isAm) h += 12;
     return h * 60 + minute;
-  }
-
-  int _classDurationMinutes() {
-    final startMin = _to24hMinutes(_startHour, _startMinute, _startIsAm);
-    final endMin = _to24hMinutes(_endHour, _endMinute, _endIsAm);
-
-    var diff = endMin - startMin;
-    if (diff <= 0) diff += 24 * 60;
-    return diff;
-  }
-
-  String _formatDurationPretty(int minutes) {
-    final h = minutes ~/ 60;
-    final m = minutes % 60;
-    if (m == 0) return '${h}hr';
-    return '${h}hr ${m}min';
-  }
-
-  Future<bool> _confirmOvernightDuration({
-    required bool isEdit,
-    required String prettyDuration,
-  }) async {
-    final result = await showDialog<bool>(
-      context: context,
-      barrierDismissible: true,
-      builder: (_) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        title: const Text('Confirm duration'),
-        content: Text(
-          'End time is earlier than start time, so this class will be treated as an overnight class.\n\n'
-              'Are you sure you want to ${isEdit ? "edit" : "create"} this class to a $prettyDuration class?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel', style: TextStyle(color: Colors.black)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF004280),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Yes', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-
-    return result ?? false;
   }
 
   late final bool isEdit = widget.initialItem != null;
@@ -469,15 +433,14 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
     return _formatTime(h % 12 == 0 ? 12 : h % 12, m, h < 12);
   }
 
-  // ✅ 2. UPDATE: Solidified conflict detection
+  // ✅ Solidified conflict detection
   Future<List<String>> _checkRoomConflicts() async {
     final day = _selectedDay;
     final roomVal = _room.text.trim();
     if (day == null || roomVal.isEmpty) return [];
 
     final startMin = _to24hMinutes(_startHour, _startMinute, _startIsAm);
-    int endMin = _to24hMinutes(_endHour, _endMinute, _endIsAm);
-    if (endMin <= startMin) endMin += 1440; // Kapag tumawid ng midnight
+    final endMin = _to24hMinutes(_endHour, _endMinute, _endIsAm);
 
     // Prepend "Room " for DB conflict check
     final roomStr = 'Room $roomVal';
@@ -502,13 +465,9 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
       final eEndParts = _parseTime(eEndStr);
 
       final eStartMin = _to24hMinutes(eStartParts.$1, eStartParts.$2, eStartParts.$3);
-      int eEndMin = _to24hMinutes(eEndParts.$1, eEndParts.$2, eEndParts.$3);
-      if (eEndMin <= eStartMin) eEndMin += 1440; // Kapag existing class ay tumawid ng midnight
+      final eEndMin = _to24hMinutes(eEndParts.$1, eEndParts.$2, eEndParts.$3);
 
-      // STRICT OVERLAP CONDITION:
-      // (Bago pumasok < Luma matapos) AND (Bago matapos > Luma magsimula)
-      // Kung 12:00 PM matatapos ang bago (endMin), at 12:00 PM magsisimula ang luma (eStartMin),
-      // ang `720 > 720` ay FALSE. Kaya papasa siya at hindi magco-conflict.
+      // Overlap check
       if (startMin < eEndMin && endMin > eStartMin) {
         final fmtStart = _convert24To12(eStartStr);
         final fmtEnd = _convert24To12(eEndStr);
@@ -516,48 +475,6 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
       }
     }
     return conflicts;
-  }
-
-  void _showConflictModal(List<String> conflicts) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        title: const Row(
-          children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.red),
-            SizedBox(width: 10),
-            Text("Schedule Conflict", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text("This room is already occupied during this time:", style: TextStyle(fontSize: 14)),
-            const SizedBox(height: 12),
-            ...conflicts.map((c) => Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Text("• $c", style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.red)),
-            )),
-          ],
-        ),
-        actions: [
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF004280),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-              onPressed: () => Navigator.pop(context),
-              child: const Text("OK", style: TextStyle(color: Colors.white)),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   final ScrollController _conflictScrollController = ScrollController(); //  Conflict scrollbar
@@ -835,15 +752,6 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
                             final ok = await _confirmSave(isEdit: isEdit);
                             if (!ok) { setState(() => _saving = false); return; }
 
-                            final startMin = _to24hMinutes(_startHour, _startMinute, _startIsAm);
-                            int endMin = _to24hMinutes(_endHour, _endMinute, _endIsAm);
-                            if (endMin < startMin) {
-                              final durationMin = _classDurationMinutes();
-                              final pretty = _formatDurationPretty(durationMin);
-                              final okOvernight = await _confirmOvernightDuration(isEdit: isEdit, prettyDuration: pretty);
-                              if (!okOvernight) { setState(() => _saving = false); return; }
-                            }
-
                             final uid = supabase.auth.currentUser?.id;
                             if (uid == null) throw Exception('Not logged in');
 
@@ -863,14 +771,15 @@ class _CreateClassSheetState extends State<CreateClassSheet> {
                             if (isEdit) {
                               row = await supabase.from('classes').update({
                                 'course': courseName, 'course_code': courseCode, 'year_section': yearSection, 'room': room,
-                                'day_of_week': day, 'start_time': start, 'end_time': end, 'schedule': schedule, 'room_ap': assignedWifi,
+                                'day_of_week': day, 'schedule': schedule, 'room_ap': assignedWifi,
+                                'start_time': start, 'end_time': end
                               }).eq('id', widget.initialItem!.id).select().single();
                               await supabase.from('class_sessions').update({'status': null}).eq('class_id', widget.initialItem!.id);
                             } else {
                               row = await supabase.from('classes').insert({
                                 'professor_id': uid, 'course': courseName, 'course_code': courseCode, 'year_section': yearSection,
-                                'room': room, 'day_of_week': day, 'start_time': start, 'end_time': end, 'schedule': schedule,
-                                'class_code': classCode, 'room_ap': assignedWifi,
+                                'room': room, 'day_of_week': day, 'schedule': schedule, 'class_code': classCode, 'room_ap': assignedWifi,
+                                'start_time': start, 'end_time': end
                               }).select().single();
                             }
 

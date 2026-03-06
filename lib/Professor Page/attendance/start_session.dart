@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../widgets/class_session.dart';
+import '../utils/error_handler.dart';
 
 class StartSession extends StatefulWidget {
   final List<String> students;
@@ -89,7 +90,7 @@ class _StartSessionState extends State<StartSession> {
       if (!mounted) return;
       if (!silent) {
         setState(() {
-          _enrolledErr = e.toString();
+          _enrolledErr = ErrorHandler.getMessage(e);
           _loadingEnrolled = false;
         });
       }
@@ -475,7 +476,7 @@ class _StartSessionState extends State<StartSession> {
       if (!mounted) return;
       Navigator.pop(context); // Dismiss loading
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error approving student: $e')),
+        SnackBar(content: Text('Error approving student: ${ErrorHandler.getMessage(e)}')),
       );
     }
   }
@@ -547,7 +548,7 @@ class _StartSessionState extends State<StartSession> {
       if (!mounted) return;
       Navigator.pop(context); // Dismiss loading
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error approving students: $e')),
+        SnackBar(content: Text('Error approving students: ${ErrorHandler.getMessage(e)}')),
       );
     }
   }
@@ -648,7 +649,7 @@ class _StartSessionState extends State<StartSession> {
         setState(() => _starting = false);
 
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to start session: $e')),
+          SnackBar(content: Text('Failed to start session: ${ErrorHandler.getMessage(e)}')),
         );
       }
     }

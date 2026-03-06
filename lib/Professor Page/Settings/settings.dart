@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../main.dart';
 import '../Notification/push_token_service.dart';
 import '../professor_session.dart';
+import '../utils/error_handler.dart';
 import 'change_email.dart';
 import 'privacy_policy.dart';
 
@@ -97,7 +98,7 @@ class _SettingsState extends State<Settings> {
       }
     } catch (e) {
       if (mounted && Navigator.canPop(context)) Navigator.pop(context);
-      _toast(e.toString().replaceFirst('Exception: ', ''));
+      _toast(ErrorHandler.getMessage(e));
       setState(() => is2FAOn = !value);
     }
   }
@@ -279,7 +280,7 @@ class _SettingsState extends State<Settings> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _professorError = e.toString();
+        _professorError = ErrorHandler.getMessage(e);
         _loadingProfessor = false;
       });
     }
@@ -549,7 +550,7 @@ class _SettingsState extends State<Settings> {
                                         if (!mounted) return;
                                         setState(() => isNotificationOn = prev);
                                         ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text('Please check your internet connection')),
+                                          SnackBar(content: Text(ErrorHandler.getMessage(e))),
                                         );
                                       } finally {
                                         if (mounted) setState(() => _notifBusy = false);
@@ -1187,7 +1188,7 @@ class _OtpDialogState extends State<_OtpDialog> {
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      'Invalid OTP',
+                      _otpError!,
                       style: const TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.w600),
                     ),
                   ),
@@ -1228,10 +1229,10 @@ class _OtpDialogState extends State<_OtpDialog> {
                         if (!mounted) return;
                         Navigator.pop(context, true);
                       } catch (e) {
-                        final msg = e.toString().replaceFirst('Exception: ', '');
+                        final msg = ErrorHandler.getMessage(e);
 
                         if (!mounted) return;
-                        setState(() => _otpError = msg.isEmpty ? 'Invalid OTP' : msg);
+                        setState(() => _otpError = msg);
 
                         // optional: haptic feedback
                         HapticFeedback.mediumImpact();
@@ -1267,7 +1268,7 @@ class _OtpDialogState extends State<_OtpDialog> {
                 } catch (e) {
                   if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+                    SnackBar(content: Text(ErrorHandler.getMessage(e))),
                   );
                 } finally {
                   if (mounted) setState(() => _resending = false);
