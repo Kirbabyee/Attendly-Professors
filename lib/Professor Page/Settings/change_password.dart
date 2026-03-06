@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../utils/error_handler.dart';
+
 class ChangePassword extends StatefulWidget {
   const ChangePassword({super.key});
 
@@ -319,7 +321,7 @@ class _ChangePasswordState extends State<ChangePassword> {
                 },
                 decoration: _input(
                   'Enter current password',
-                  errorText: _pwError != null ? 'Invalid password' : null,
+                  errorText: _pwError != null ? _pwError : null,
                   suffix: IconButton(
                     onPressed: () => setState(() => showCurrent = !showCurrent),
                     icon: Icon(showCurrent ? Icons.visibility : Icons.visibility_off, size: 18),
@@ -362,7 +364,7 @@ class _ChangePasswordState extends State<ChangePassword> {
                 if (!mounted) return;
                 setState(() => step = 2);
               } catch (e) {
-                final msg = e.toString().replaceFirst('Exception: ', '');
+                final msg = ErrorHandler.getMessage(e);
                 if (!mounted) return;
                 setState(() => _pwError = msg);
               } finally {
@@ -498,7 +500,7 @@ class _ChangePasswordState extends State<ChangePassword> {
 
                 Navigator.pop(context, true);
               } catch (e) {
-                _toast(e.toString().replaceFirst('Exception: ', ''));
+                _toast(ErrorHandler.getMessage(e));
               } finally {
                 if (mounted) setState(() => saving = false);
               }
@@ -768,10 +770,10 @@ class _OtpDialogState extends State<_OtpDialog> {
                         if (!mounted) return;
                         Navigator.pop(context, true);
                       } catch (e) {
-                        final msg = e.toString().replaceFirst('Exception: ', '');
+                        final msg = ErrorHandler.getMessage(e);
 
                         if (!mounted) return;
-                        setState(() => _otpError = msg.isEmpty ? 'Invalid OTP' : msg);
+                        setState(() => _otpError = msg);
 
                         HapticFeedback.mediumImpact();
                       } finally {
@@ -805,7 +807,7 @@ class _OtpDialogState extends State<_OtpDialog> {
                 } catch (e) {
                   if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+                    SnackBar(content: Text(ErrorHandler.getMessage(e))),
                   );
                 } finally {
                   if (mounted) setState(() => _resending = false);

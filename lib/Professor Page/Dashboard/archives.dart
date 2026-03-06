@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../utils/error_handler.dart';
 import 'class_item.dart';
 import 'dashboard.dart';
 
@@ -46,7 +47,7 @@ class _ArchivesState extends State<Archives> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to restore class: $e')),
+        SnackBar(content: Text('Failed to restore class: ${ErrorHandler.getMessage(e)}')),
       );
     }
   }

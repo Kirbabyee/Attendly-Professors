@@ -10,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:syncfusion_flutter_datepicker/datepicker.dart';
 
+import '../utils/error_handler.dart';
 import 'export_function.dart';
 
 class AttendanceRecord {
@@ -234,7 +235,7 @@ class _DataFilterState extends State<DataFilter> {
         setState(() {
           _offline = true;
           _loading = false;
-          _err = null;
+          _err = ErrorHandler.getMessage(e);
         });
         _showNoInternetSnack();
       }
@@ -581,7 +582,7 @@ class _DataFilterState extends State<DataFilter> {
                                     } catch (e) {
                                       if (!mounted) return;
                                       ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text('Export failed: $e')),
+                                        SnackBar(content: Text('Export failed: ${ErrorHandler.getMessage(e)}')),
                                       );
                                     }
                                   },

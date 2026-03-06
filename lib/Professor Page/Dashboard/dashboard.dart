@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../attendance/start_session.dart';
 import '../professor_session.dart';
+import '../utils/error_handler.dart';
 import 'archives.dart';
 import 'class_item.dart';
 import 'create_class.dart';
@@ -355,6 +356,10 @@ class _DashboardState extends State<Dashboard> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _offline = true);
+      // Optional: Show error message from ErrorHandler
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(ErrorHandler.getMessage(e))),
+      );
     }
   }
 
@@ -574,7 +579,7 @@ class _DashboardState extends State<Dashboard> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _profErr = e.toString();
+        _profErr = ErrorHandler.getMessage(e);
         _loadingProf = false;
       });
     }
@@ -717,7 +722,7 @@ class _DashboardState extends State<Dashboard> {
                     margin: EdgeInsets.fromLTRB(screenWidth > 400 ? 33 : screenWidth < 370 ? 9 : 10, 0, 0, screenWidth < 370 ? 3 : 10),
                     padding: EdgeInsets.symmetric(vertical: 2),
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadiusGeometry.circular(75),
+                      borderRadius: BorderRadius.circular(75),
                       border: Border.all(
                         color: session == 'Pending'
                             ? Color(0xFFB09602)
@@ -799,7 +804,7 @@ class _DashboardState extends State<Dashboard> {
                           } catch (e) {
                             if (!context.mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Failed to end session: $e')),
+                              SnackBar(content: Text('Failed to end session: ${ErrorHandler.getMessage(e)}')),
                             );
                             return;
                           }
@@ -971,7 +976,7 @@ class _DashboardState extends State<Dashboard> {
         child: Column(
           children: [
             Container(
-              height: screenHeight * .16, // Reduced height since info is gone
+              height: screenHeight * .18, 
               decoration: const BoxDecoration(
                 color: Color(0xFF004280),
                 borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
@@ -983,11 +988,20 @@ class _DashboardState extends State<Dashboard> {
                     margin: const EdgeInsets.symmetric(horizontal: 20),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      crossAxisAlignment: CrossAxisAlignment.end,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8.0),
+                              child: Image.asset(
+                                'assets/logo2.png',
+                                height: screenHeight * 0.060,
+                                colorBlendMode: BlendMode.srcIn,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
                             Text('Welcome to Attendly',
                               style: TextStyle(color: Colors.white, fontSize: screenHeight * .016)
                             ),
@@ -1004,6 +1018,7 @@ class _DashboardState extends State<Dashboard> {
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
+                            SizedBox(height: screenHeight * .015,),
                             Stack(
                               clipBehavior: Clip.none,
                               children: [
@@ -1027,6 +1042,7 @@ class _DashboardState extends State<Dashboard> {
                                   ),
                               ],
                             ),
+                            SizedBox(height: 5,),
                             Container(
                               decoration: BoxDecoration(
                                 color: const Color(0xFFDBEAFE),
@@ -1058,11 +1074,10 @@ class _DashboardState extends State<Dashboard> {
                       ],
                     ),
                   ),
-                  // Card removed
                 ],
               ),
             ),
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             Expanded(
               child: RefreshIndicator(
                 onRefresh: () async {
@@ -1131,13 +1146,20 @@ class _DashboardState extends State<Dashboard> {
                         c.session,
                         screenHeight,
                             () async {
-                          await Supabase.instance.client.from('classes').update({'archived': true}).eq('id', c.id);
-                          if (!mounted) return;
-                          setState(() {
-                            _archivedClasses.add(c);
-                            _classes.removeAt(i);
-                            _sortClasses();
-                          });
+                          try {
+                            await Supabase.instance.client.from('classes').update({'archived': true}).eq('id', c.id);
+                            if (!mounted) return;
+                            setState(() {
+                              _archivedClasses.add(c);
+                              _classes.removeAt(i);
+                              _sortClasses();
+                            });
+                          } catch (e) {
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(ErrorHandler.getMessage(e))),
+                            );
+                          }
                         },
                       );
                     }).toList(),
@@ -1171,6 +1193,12 @@ class _DashboardState extends State<Dashboard> {
     );
     try {
       await task();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(ErrorHandler.getMessage(e))),
+        );
+      }
     } finally {
       if (mounted) Navigator.pop(context);
     }

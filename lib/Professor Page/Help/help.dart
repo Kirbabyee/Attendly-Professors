@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../professor_session.dart';
+import '../utils/error_handler.dart';
 import 'FAQs.dart';
 
 class Help extends StatefulWidget {
@@ -93,7 +94,7 @@ class _HelpState extends State<Help> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to submit request: $e')),
+        SnackBar(content: Text('Failed to submit request: ${ErrorHandler.getMessage(e)}')),
       );
     } finally {
       if (mounted) setState(() => _sending = false);
@@ -406,7 +407,7 @@ class _HelpState extends State<Help> {
                                       onPressed: _sending ? null : _submitSupportRequest,
                                       style: OutlinedButton.styleFrom(
                                         backgroundColor: const Color(0xFF004280),
-                                        side: const BorderSide(color: Color(0xFF004280)),
+                                        side: const BorderSide(color: const Color(0xFF004280)),
                                       ),
                                       child: Text(
                                         _sending ? 'Submitting...' : 'Submit Request',

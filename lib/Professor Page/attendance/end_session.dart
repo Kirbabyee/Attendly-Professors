@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 
 import '../../widgets/class_session.dart';
+import '../utils/error_handler.dart';
 
 class EndSession extends StatefulWidget {
   final List<String> students;
@@ -416,7 +417,7 @@ class _EndSessionState extends State<EndSession> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to re-verify: $e')),
+        SnackBar(content: Text('Failed to re-verify: ${ErrorHandler.getMessage(e)}')),
       );
     } finally {
       if (mounted) setState(() => _reverifying = false);
@@ -570,7 +571,7 @@ class _EndSessionState extends State<EndSession> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: ${ErrorHandler.getMessage(e)}')));
     }
   }
 
@@ -898,7 +899,7 @@ class _EndSessionState extends State<EndSession> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _attendanceErr = e.toString();
+        _attendanceErr = ErrorHandler.getMessage(e);
         _loadingAttendance = false;
         _loadingSessionInfo = false;
       });
@@ -1003,7 +1004,7 @@ class _EndSessionState extends State<EndSession> {
         if (!mounted) return;
         setState(() => _ending = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to end session: $e')),
+          SnackBar(content: Text('Failed to end session: ${ErrorHandler.getMessage(e)}')),
         );
       }
     }
@@ -1066,7 +1067,7 @@ class _EndSessionState extends State<EndSession> {
       if (!mounted) return;
       Navigator.pop(context); // Dismiss loading
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error approving student: $e')),
+        SnackBar(content: Text('Error approving student: ${ErrorHandler.getMessage(e)}')),
       );
     }
   }
@@ -1138,7 +1139,7 @@ class _EndSessionState extends State<EndSession> {
       if (!mounted) return;
       Navigator.pop(context); // Dismiss loading
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error approving students: $e')),
+        SnackBar(content: Text('Error approving students: ${ErrorHandler.getMessage(e)}')),
       );
     }
   }
