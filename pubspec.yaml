@@ -54,6 +54,7 @@ dependencies:
   internet_connection_checker_plus: ^2.5.2
   mobile_scanner: ^5.1.0
   syncfusion_flutter_xlsio: ^32.2.5
+  google_generative_ai: ^0.4.7
 
 dev_dependencies:
   flutter_test:

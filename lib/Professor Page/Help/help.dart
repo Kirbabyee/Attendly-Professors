@@ -1,7 +1,8 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:professor/Professor%20Page/professor_session.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../professor_session.dart';
 import '../utils/error_handler.dart';
 import 'FAQs.dart';
 
@@ -13,6 +14,14 @@ class Help extends StatefulWidget {
 }
 
 class _HelpState extends State<Help> {
+  final List<Map<String, String>> _chatHistory = [
+    {
+      'role': 'ai',
+      'text': 'Hello! I am **Lyra AI**, your Attendly support assistant. 🤖\n\n'
+          'How can I help you today with our network-based attendance system? ✨'
+    },
+  ];
+
   Future<void> _showSuccessModal() async {
     await showDialog(
       context: context,
@@ -69,16 +78,18 @@ class _HelpState extends State<Help> {
 
     try {
       final supabase = Supabase.instance.client;
+      final student = await ProfessorSession.get(); 
+
       final uid = supabase.auth.currentUser?.id;
       final email = supabase.auth.currentUser?.email;
 
-      // ✅ Fetch professor name from session cache or DB
-      final profData = await ProfessorSession.get();
-      final userName = profData?['professor_name'] ?? 'Unknown Professor';
+      final firstName = student?['first_name']?.toString().trim() ?? '';
+      final lastName = student?['last_name']?.toString().trim() ?? '';
+      final fullName = '$firstName $lastName'.trim();
 
       await supabase.from('support_requests').insert({
         'user_id': uid,
-        'user_name': userName, // ✅ Added user_name column
+        'user_name': fullName.isEmpty ? 'Unknown' : fullName,
         'email': email,
         'subject': subject,
         'message': message,
@@ -102,28 +113,28 @@ class _HelpState extends State<Help> {
   }
 
 
-  int expandedIndex = -1; // Only one expands at a time
+  int expandedIndex = -1; 
 
-  List<FAQs> faqs = [
+  final List<FAQs> faqs = [
     FAQs(
-      category: 'Class Session',
-      question: 'Why I can\'t start my class session?',
-      answer: 'Make sure you have internet. And start class button will be enabled 10 minutes before the schedule.'
+        category: 'Class Session',
+        question: 'Why I can\'t start my class session?',
+        answer: 'Make sure you have internet. And start class button will be enabled 10 minutes before the schedule.'
     ),
     FAQs(
-      category: 'Attendance History',
-      question: 'Why I can\'t see my attendance history?',
-      answer: 'Make sure you have at least a student enrolled to your class'
+        category: 'Attendance History',
+        question: 'Why I can\'t see my attendance history?',
+        answer: 'Make sure you have at least a student enrolled to your class'
     ),
     FAQs(
-      category: 'Notification',
-      question: 'Why am I not receiving class reminders?',
-      answer: 'Check that notifications are enabled in both the app settings and your device system settings. Also verify that you have set up class reminders with appropriate timing.'
+        category: 'Notification',
+        question: 'Why am I not receiving class reminders?',
+        answer: 'Check that notifications are enabled in both the app settings and your device system settings.'
     ),
     FAQs(
-      category: 'Account',
-      question: 'How do I reset my password?',
-      answer: 'Go to Settings > Security & Privacy > Change Password. You will need to enter your current password and then create a new one. Make sure your new password is strong and unique.'
+        category: 'Account',
+        question: 'How do I reset my password?',
+        answer: 'Go to Settings > Security & Privacy > Change Password. You will need to enter your current password and then create a new one. Make sure your new password is strong and unique.'
     ),
   ];
 
@@ -154,7 +165,6 @@ class _HelpState extends State<Help> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header row (stable)
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -183,7 +193,6 @@ class _HelpState extends State<Help> {
                 ),
               ),
 
-              // Arrow stays aligned nicely
               AnimatedRotation(
                 turns: isExpanded ? 0.5 : 0,
                 duration: const Duration(milliseconds: 200),
@@ -201,7 +210,6 @@ class _HelpState extends State<Help> {
             ],
           ),
 
-          // Animated body (doesn't mess header)
           ClipRect(
             child: AnimatedSize(
               duration: const Duration(milliseconds: 200),
@@ -223,11 +231,25 @@ class _HelpState extends State<Help> {
     );
   }
 
+  void _openLyraChat() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => LyraChatBot(faqs: faqs, chatHistory: _chatHistory),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
     return Scaffold(
+      floatingActionButton: FloatingActionButton(
+        onPressed: _openLyraChat,
+        backgroundColor: const Color(0xFF004280),
+        child: const Icon(Icons.chat_bubble_outline, color: Colors.white),
+      ),
       body: SafeArea(
         child: Column(
           children: [
@@ -305,7 +327,6 @@ class _HelpState extends State<Help> {
                       );
                     }).toList(),
 
-                    // Contact Support
                     Container(
                       width: screenWidth * .9,
                       padding: const EdgeInsets.all(20),
@@ -407,7 +428,7 @@ class _HelpState extends State<Help> {
                                       onPressed: _sending ? null : _submitSupportRequest,
                                       style: OutlinedButton.styleFrom(
                                         backgroundColor: const Color(0xFF004280),
-                                        side: const BorderSide(color: const Color(0xFF004280)),
+                                        side: const BorderSide(color: Color(0xFF004280)),
                                       ),
                                       child: Text(
                                         _sending ? 'Submitting...' : 'Submit Request',
@@ -446,5 +467,351 @@ class _HelpState extends State<Help> {
         ),
       ),
     );
+  }
+}
+
+class LyraChatBot extends StatefulWidget {
+  final List<FAQs> faqs;
+  final List<Map<String, String>> chatHistory;
+  const LyraChatBot({super.key, required this.faqs, required this.chatHistory});
+
+  @override
+  State<LyraChatBot> createState() => _LyraChatBotState();
+}
+
+class _LyraChatBotState extends State<LyraChatBot> {
+  final _chatCtrl = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollToBottom();
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  void _handleSend() {
+    final query = _chatCtrl.text.trim();
+    if (query.isEmpty) return;
+
+    setState(() {
+      widget.chatHistory.add({'role': 'user', 'text': query});
+      _chatCtrl.clear();
+    });
+    _scrollToBottom();
+
+    _generateResponse(query);
+  }
+  bool _isTyping = false;
+  Future<void> _generateResponse(String query) async {
+    if (_isTyping) return;
+
+    setState(() => _isTyping = true);
+
+    try {
+      const apiKey = "AIzaSyBAxryTzCTtCtvX6bXiZqQu5YI26_OLLww";
+
+      final history = widget.chatHistory.map((m) {
+        final role = m['role'] == 'ai' ? 'assistant' : 'user';
+        return "$role: ${m['text']}";
+      }).join("\n");
+
+      final faqContext = widget.faqs.map((f) => "Q: ${f.question}\nA: ${f.answer}").join("\n\n");
+
+      final prompt = '''
+        You are Lyra AI, the official assistant for the Attendly Professor app.
+        
+        Your task is to help users by answering their questions based on the Frequently Asked Questions (FAQs) and core app functionalities provided below.
+        
+        FAQ KNOWLEDGE BASE:
+        $faqContext
+        
+        CORE APP FUNCTIONALITIES:
+        - Create Class: Click the "+" button in the Dashboard, fill in class details (Course, Section, Schedule, Room), and save.
+        - Start Class: Find the class in the Dashboard, click the arrow icon to open the class session, and click "Start Session". Note: Only possible 10 mins before or during the schedule.
+        - Accept Students: In your classes, you can accept student's join request in the pending section by clicking the "Accept" button.
+        - Mark Attendance: In an active session, you can manually mark students as Present or Absent by toggling their status in the student list.
+        - End Class: In the active session screen, click the "End Session" button to finalize attendance records and close the session.
+        - Notifications: In settings PUSH NOTIFICATIONS must be on in order to receive notifications. And notification's permission must me allowed.
+        
+        GENERAL APP INFO:
+        - Attendly Professor: App for professors to manage classes and track attendance using classroom Wi-Fi.
+        - Requirements: Classroom Wi-Fi connection and Internet.
+        - Features: View schedules, mark attendance, check records, view notifications.
+        
+        CONSTRAINTS:
+        - Always answer in bullet points for instructions or multiple pieces of information.
+        - Keep answers concise and polite.
+        - ONLY answer questions about the Attendly Professor app.
+        - If a question is NOT about Attendly Professor or cannot be answered using the FAQs/App Info, respond exactly with:
+          "I'm sorry, I am only trained to assist with Attendly Professor app concerns. How can I help you with your attendance today?"
+        - If a question contains profanity, respond with: 
+          "I am programmed to be a helpful and safe assistant. I cannot respond to prompts containing profanity or offensive language."
+        
+        CONVERSATION HISTORY:
+        $history
+        
+        USER'S QUESTION:
+        $query
+        
+        LYRA AI RESPONSE:
+        ''';
+
+      GenerateContentResponse response;
+      try {
+        final model = GenerativeModel(
+          model: 'gemini-2.5-flash', 
+          apiKey: apiKey,
+        );
+        response = await model.generateContent([
+          Content.text(prompt),
+        ]);
+      } catch (e) {
+        debugPrint("Primary model gemini-2.5-flash failed, falling back to gemini-flash-latest: $e");
+        final model = GenerativeModel(
+          model: 'gemini-flash-latest',
+          apiKey: apiKey,
+        );
+        response = await model.generateContent([
+          Content.text(prompt),
+        ]);
+      }
+
+      final aiText = response.text?.trim();
+
+      if (!mounted) return;
+
+      setState(() {
+        widget.chatHistory.add({
+          'role': 'ai',
+          'text': aiText?.isNotEmpty == true
+              ? aiText!
+              : "Sorry, I couldn't generate a response."
+        });
+
+        _isTyping = false;
+      });
+
+      _scrollToBottom();
+    } catch (e) {
+      debugPrint("GEMINI ERROR: $e");
+
+      if (!mounted) return;
+
+      setState(() {
+        widget.chatHistory.add({
+          'role': 'ai',
+          'text': "⚠️ Error connecting to AI. Please try again."
+        });
+
+        _isTyping = false;
+      });
+
+      _scrollToBottom();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.of(context).size.height;
+
+    return Container(
+      height: screenHeight * 0.8,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+            decoration: const BoxDecoration(
+              color: Color(0xFF004280),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    const CircleAvatar(
+                      backgroundColor: Colors.white24,
+                      child: Icon(Icons.auto_awesome, color: Colors.white),
+                    ),
+                    const SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: const [
+                        Text('Lyra AI', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                        Text('Attendly Assistant', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                      ],
+                    ),
+                  ],
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close, color: Colors.white),
+                )
+              ],
+            ),
+          ),
+
+          Expanded(
+            child: ListView.builder(
+              controller: _scrollController,
+              padding: const EdgeInsets.all(15),
+              itemCount: _isTyping ? widget.chatHistory.length + 1 : widget.chatHistory.length,
+              itemBuilder: (context, index) {
+                if (index == widget.chatHistory.length) {
+                  return Align(
+                    alignment: Alignment.centerLeft,
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 10, left: 15),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(15),
+                          topRight: Radius.circular(15),
+                          bottomRight: Radius.circular(15),
+                        ),
+                      ),
+                      child: const Text(
+                        "Lyra is thinking...",
+                        style: TextStyle(
+                          fontStyle: FontStyle.italic,
+                          color: Colors.grey,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  );
+                }
+
+                final msg = widget.chatHistory[index];
+                final isAi = msg['role'] == 'ai';
+                return Align(
+                  alignment: isAi ? Alignment.centerLeft : Alignment.centerRight,
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+                    decoration: BoxDecoration(
+                      color: isAi ? Colors.grey[100] : const Color(0xFF004280),
+                      borderRadius: BorderRadius.only(
+                        topLeft: const Radius.circular(15),
+                        topRight: const Radius.circular(15),
+                        bottomLeft: Radius.circular(isAi ? 0 : 15),
+                        bottomRight: Radius.circular(isAi ? 15 : 0),
+                      ),
+                    ),
+                    child: _FormattedText(
+                      text: msg['text'] ?? "",
+                      textColor: isAi ? Colors.black87 : Colors.white,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+
+          Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom + 10,
+              left: 10,
+              right: 10,
+              top: 5,
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _chatCtrl,
+                    decoration: InputDecoration(
+                      hintText: 'Type your question...',
+                      filled: true,
+                      fillColor: Colors.grey[200],
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(25),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                    ),
+                    onSubmitted: (_) => _handleSend(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                CircleAvatar(
+                  backgroundColor: const Color(0xFF004280),
+                  child: IconButton(
+                    onPressed: _handleSend,
+                    icon: const Icon(Icons.send, color: Colors.white, size: 20),
+                  ),
+                )
+              ],
+            ),
+          )
+        ],
+      ),
+    );
+  }
+}
+
+class _FormattedText extends StatelessWidget {
+  final String text;
+  final Color textColor;
+
+  const _FormattedText({required this.text, required this.textColor});
+
+  @override
+  Widget build(BuildContext context) {
+    List<TextSpan> spans = [];
+    final lines = text.split('\n');
+
+    for (var line in lines) {
+      if (line.startsWith('### ')) {
+        spans.add(TextSpan(
+          text: '${line.substring(4)}\n',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: textColor),
+        ));
+      } else if (line.startsWith('* ') || line.startsWith('- ')) {
+        spans.add(TextSpan(text: '  • ', style: TextStyle(color: textColor)));
+        _parseBold(line.substring(2) + '\n', spans);
+      } else {
+        _parseBold(line + '\n', spans);
+      }
+    }
+
+    return RichText(
+      text: TextSpan(
+        style: TextStyle(fontSize: 14, height: 1.4, color: textColor),
+        children: spans,
+      ),
+    );
+  }
+
+  void _parseBold(String line, List<TextSpan> spans) {
+    final parts = line.split('**');
+    for (int i = 0; i < parts.length; i++) {
+      if (i % 2 == 1) {
+        spans.add(TextSpan(
+          text: parts[i],
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ));
+      } else {
+        spans.add(TextSpan(text: parts[i]));
+      }
+    }
   }
 }
